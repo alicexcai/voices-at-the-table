@@ -1,0 +1,322 @@
+{
+  "version": "1.0",
+  "aboutFields": [
+    {
+      "id": "displayName",
+      "label": "What should we call you on the wall?",
+      "type": "text",
+      "placeholder": "Your name or a name you choose",
+      "required": false
+    },
+    {
+      "id": "occupation",
+      "label": "What is your occupation or area of study?",
+      "type": "text",
+      "placeholder": "For example, high school teacher",
+      "required": true
+    },
+    {
+      "id": "city",
+      "label": "Where are you joining from?",
+      "type": "text",
+      "placeholder": "City or region",
+      "required": true
+    }
+  ],
+  "consent": [
+    {
+      "id": "roundtableInterest",
+      "label": "I would like to hear about future roundtable conversations.",
+      "required": false
+    },
+    {
+      "id": "publishToWall",
+      "label": "I give permission for my written response and voice note to appear on the Voices Wall.",
+      "required": true
+    },
+    {
+      "id": "useVoiceInRoundtable",
+      "label": "I give permission for my voice clip to be played in a future roundtable.",
+      "required": false
+    },
+    {
+      "id": "contactMe",
+      "label": "I am open to being contacted about this project.",
+      "required": false
+    }
+  ],
+  "industries": [
+    {
+      "id": "education",
+      "label": "Education",
+      "status": "open",
+      "descriptor": "Classrooms, campuses, and the people who make learning possible.",
+      "roles": ["Worker / educator", "Manager", "Technologist", "Student", "Parent or caregiver", "Other community stakeholder"],
+      "stakeholderGroups": ["workers and educators", "managers and technologists", "students, families, and communities"],
+      "questions": [
+        {
+          "id": "relationship",
+          "title": "Your relationship with generative AI",
+          "prompt": "How would you describe your current relationship with generative AI?",
+          "type": "choice",
+          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+        },
+        {
+          "id": "workExperience",
+          "title": "AI and your work",
+          "prompt": "How do you experience generative AI in relation to your work, learning, or care responsibilities?",
+          "type": "textarea",
+          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
+          "required": true
+        },
+        {
+          "id": "hopeAndConcern",
+          "title": "Hope and concern",
+          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Education? Where do you have concerns or see challenges?",
+          "type": "textarea",
+          "placeholder": "There is room for both hope and worry here.",
+          "required": true
+        },
+        {
+          "id": "perspectives",
+          "title": "Different perspectives",
+          "prompt": "What motivations might workers and educators, managers and technologists, and students, families, and communities have? What might they see differently?",
+          "type": "textarea",
+          "placeholder": "What would each group want protected, changed, or made possible?",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "healthcare",
+      "label": "Healthcare",
+      "status": "open",
+      "descriptor": "Care teams, patients, families, and the systems around them.",
+      "roles": ["Worker / clinician", "Manager", "Technologist", "Patient", "Family caregiver", "Other community stakeholder"],
+      "stakeholderGroups": ["workers and care teams", "managers and technologists", "patients, families, and communities"],
+      "questions": [
+        {
+          "id": "relationship",
+          "title": "Your relationship with generative AI",
+          "prompt": "How would you describe your current relationship with generative AI?",
+          "type": "choice",
+          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+        },
+        {
+          "id": "workExperience",
+          "title": "AI and your work",
+          "prompt": "How do you experience generative AI in relation to your work, care, or health journey?",
+          "type": "textarea",
+          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
+          "required": true
+        },
+        {
+          "id": "hopeAndConcern",
+          "title": "Hope and concern",
+          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Healthcare? Where do you have concerns or see challenges?",
+          "type": "textarea",
+          "placeholder": "There is room for both hope and worry here.",
+          "required": true
+        },
+        {
+          "id": "perspectives",
+          "title": "Different perspectives",
+          "prompt": "What motivations might workers and care teams, managers and technologists, and patients, families, and communities have? What might they see differently?",
+          "type": "textarea",
+          "placeholder": "What would each group want protected, changed, or made possible?",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "science",
+      "label": "Science",
+      "status": "open",
+      "descriptor": "Labs, fieldwork, discovery, and the public trust in knowledge.",
+      "roles": ["Worker / researcher", "Manager", "Technologist", "Student", "Research participant", "Other community stakeholder"],
+      "stakeholderGroups": ["workers and researchers", "managers and technologists", "students, participants, and communities"],
+      "questions": [
+        {
+          "id": "relationship",
+          "title": "Your relationship with generative AI",
+          "prompt": "How would you describe your current relationship with generative AI?",
+          "type": "choice",
+          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+        },
+        {
+          "id": "workExperience",
+          "title": "AI and your work",
+          "prompt": "How do you experience generative AI in relation to your work, research, or learning?",
+          "type": "textarea",
+          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
+          "required": true
+        },
+        {
+          "id": "hopeAndConcern",
+          "title": "Hope and concern",
+          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Science? Where do you have concerns or see challenges?",
+          "type": "textarea",
+          "placeholder": "There is room for both hope and worry here.",
+          "required": true
+        },
+        {
+          "id": "perspectives",
+          "title": "Different perspectives",
+          "prompt": "What motivations might workers and researchers, managers and technologists, and students, participants, and communities have? What might they see differently?",
+          "type": "textarea",
+          "placeholder": "What would each group want protected, changed, or made possible?",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "creative-work",
+      "label": "Creative Work",
+      "status": "open",
+      "descriptor": "The people, practices, and livelihoods behind culture and expression.",
+      "roles": ["Worker / creative practitioner", "Manager", "Technologist", "Student", "Audience member", "Other community stakeholder"],
+      "stakeholderGroups": ["workers and creative practitioners", "managers and technologists", "audiences and communities"],
+      "questions": [
+        {
+          "id": "relationship",
+          "title": "Your relationship with generative AI",
+          "prompt": "How would you describe your current relationship with generative AI?",
+          "type": "choice",
+          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+        },
+        {
+          "id": "workExperience",
+          "title": "AI and your work",
+          "prompt": "How do you experience generative AI in relation to your creative work, livelihood, or cultural life?",
+          "type": "textarea",
+          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
+          "required": true
+        },
+        {
+          "id": "hopeAndConcern",
+          "title": "Hope and concern",
+          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Creative Work? Where do you have concerns or see challenges?",
+          "type": "textarea",
+          "placeholder": "There is room for both hope and worry here.",
+          "required": true
+        },
+        {
+          "id": "perspectives",
+          "title": "Different perspectives",
+          "prompt": "What motivations might workers and creative practitioners, managers and technologists, and audiences and communities have? What might they see differently?",
+          "type": "textarea",
+          "placeholder": "What would each group want protected, changed, or made possible?",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "government",
+      "label": "Government",
+      "status": "later",
+      "descriptor": "Public institutions, services, and the people they serve.",
+      "roles": ["Worker / public servant", "Manager", "Technologist", "Resident", "Advocate", "Other community stakeholder"],
+      "stakeholderGroups": ["workers and public servants", "managers and technologists", "residents and communities"],
+      "questions": [
+        {
+          "id": "relationship",
+          "title": "Your relationship with generative AI",
+          "prompt": "How would you describe your current relationship with generative AI?",
+          "type": "choice",
+          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+        },
+        {
+          "id": "workExperience",
+          "title": "AI and your work",
+          "prompt": "How do you experience generative AI in relation to your work or public services?",
+          "type": "textarea",
+          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
+          "required": true
+        },
+        {
+          "id": "hopeAndConcern",
+          "title": "Hope and concern",
+          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Government? Where do you have concerns or see challenges?",
+          "type": "textarea",
+          "placeholder": "There is room for both hope and worry here.",
+          "required": true
+        },
+        {
+          "id": "perspectives",
+          "title": "Different perspectives",
+          "prompt": "What motivations might workers and public servants, managers and technologists, and residents and communities have? What might they see differently?",
+          "type": "textarea",
+          "placeholder": "What would each group want protected, changed, or made possible?",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "low-wage-services",
+      "label": "Low-Wage Services",
+      "status": "later",
+      "descriptor": "The everyday work that keeps places moving and people cared for.",
+      "roles": ["Worker", "Manager", "Technologist", "Customer", "Care recipient", "Other community stakeholder"],
+      "stakeholderGroups": ["workers", "managers and technologists", "customers and communities"],
+      "questions": [
+        {
+          "id": "relationship",
+          "title": "Your relationship with generative AI",
+          "prompt": "How would you describe your current relationship with generative AI?",
+          "type": "choice",
+          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+        },
+        {
+          "id": "workExperience",
+          "title": "AI and your work",
+          "prompt": "How do you experience generative AI in relation to your work or daily life?",
+          "type": "textarea",
+          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
+          "required": true
+        },
+        {
+          "id": "hopeAndConcern",
+          "title": "Hope and concern",
+          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Low-Wage Services? Where do you have concerns or see challenges?",
+          "type": "textarea",
+          "placeholder": "There is room for both hope and worry here.",
+          "required": true
+        },
+        {
+          "id": "perspectives",
+          "title": "Different perspectives",
+          "prompt": "What motivations might workers, managers and technologists, and customers and communities have? What might they see differently?",
+          "type": "textarea",
+          "placeholder": "What would each group want protected, changed, or made possible?",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "sampleVoices": [
+    {
+      "industry": "Education",
+      "role": "Student",
+      "displayName": "A student in Boston",
+      "transcript": "I want tools that help me find my way into a hard idea, not tools that make the work disappear.",
+      "durationSeconds": 12,
+      "sample": true
+    },
+    {
+      "industry": "Healthcare",
+      "role": "Care worker",
+      "displayName": "A care worker in Chicago",
+      "transcript": "The best use of AI would give us more time to notice what a person needs when they cannot put it into words.",
+      "durationSeconds": 16,
+      "sample": true
+    },
+    {
+      "industry": "Creative Work",
+      "role": "Creative practitioner",
+      "displayName": "A maker in Los Angeles",
+      "transcript": "I am open to new tools, but the people making the culture should help decide what value means.",
+      "durationSeconds": 14,
+      "sample": true
+    }
+  ]
+}

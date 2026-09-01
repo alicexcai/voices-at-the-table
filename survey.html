@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Share your perspective on a just AI transition with Voices at the Table.">
+  <title>Share your voice — Voices at the Table</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vidaloka&family=Pavanam&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body data-page="survey">
+  <div class="masthead">
+    <div class="row">
+      <a class="mark" href="index.html">Voices at the Table</a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="survey.html" aria-current="page">Share your voice</a>
+        <a href="wall.html">Voices wall</a>
+      </nav>
+      <span class="right">Phase I / Personal perspectives</span>
+    </div>
+  </div>
+
+  <main class="page-main">
+    <header class="page-intro">
+      <div class="app-wrap">
+        <span class="label">Phase I · The listening room</span>
+        <h1>Your voice belongs in the conversation.</h1>
+        <p>A short, industry-specific experience for sharing what generative AI feels like in your work and life. Your email stays private with our authentication provider; only the permissions you choose shape what reaches the wall.</p>
+        <div class="intro-meta"><span class="meta-dot" aria-hidden="true"></span><span>About 6 minutes</span><span>·</span><span>Written or spoken</span><span>·</span><span>Save nothing sensitive in this browser</span></div>
+      </div>
+    </header>
+
+    <div class="app-wrap">
+      <div class="app-bar">
+        <span class="step-count" id="surveyStepCount">Choose an industry to begin</span>
+        <span class="save-note" id="surveySessionStatus">Your email is private.</span>
+      </div>
+      <section class="form-card" id="industryPicker" aria-labelledby="industryPickerTitle">
+        <h2 id="industryPickerTitle">Where do you want to begin?</h2>
+        <p class="card-intro">Each room asks the same core questions through a different lens. Government and Low-Wage Services are opening later.</p>
+        <div class="choice-grid" id="industryChoices"></div>
+      </section>
+      <section class="survey-layout" id="surveyWorkspace" hidden>
+        <aside class="survey-rail" aria-label="Survey progress">
+          <h2 id="surveyIndustryName">Industry</h2>
+          <p id="surveyIndustryDescriptor"></p>
+          <div class="progress-list" id="surveyProgress"></div>
+        </aside>
+        <div class="survey-content" id="surveyContent" aria-live="polite"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer><span class="mark">Voices at the Table</span> · MIT IWER initiative</footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
