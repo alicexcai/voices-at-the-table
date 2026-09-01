@@ -95,21 +95,15 @@ async function verifySignature(headers, rawBody) {
 function getTwilioConfig() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
-  if (!accountSid || !authToken || !fromNumber) throw new WebhookError(503, "Twilio is not configured.");
-  return { accountSid, authToken, fromNumber };
+  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+  if (!accountSid || !authToken || !serviceSid) throw new WebhookError(503, "Twilio Verify is not configured.");
+  return { accountSid, authToken, serviceSid };
 }
 
-async function sendTwilioSms({ to, otpCode, expiresAt }) {
-  const { accountSid, authToken, fromNumber } = getTwilioConfig();
-  const expiry = new Date(expiresAt);
-  const minutes = Number.isNaN(expiry.getTime()) ? 10 : Math.max(1, Math.ceil((expiry.getTime() - Date.now()) / 60000));
-  const params = new URLSearchParams({
-    To: to,
-    From: fromNumber,
-    Body: `Voices at the Table code: ${otpCode}. It expires in ${minutes} minutes.`
-  });
-  const twilioResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
+async function sendTwilioVerification({ to, otpCode }) {
+  const { accountSid, authToken, serviceSid } = getTwilioConfig();
+  const params = new URLSearchParams({ To: to, Channel: "sms", CustomCode: otpCode });
+  const twilioResponse = await fetch(`https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/Verifications`, {
     method: "POST",
     headers: {
       authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
@@ -117,13 +111,30 @@ async function sendTwilioSms({ to, otpCode, expiresAt }) {
     },
     body: params
   });
-  if (!twilioResponse.ok) throw new WebhookError(502, "Twilio could not send the code.");
+  if (!twilioResponse.ok) throw new WebhookError(502, "Twilio Verify could not send the code.");
+  const verification = await twilioResponse.json();
+  if (!verification.sid) throw new WebhookError(502, "Twilio Verify did not return a verification ID.");
+  return verification.sid;
+}
+
+async function approveTwilioVerification({ verificationSid }) {
+  const { accountSid, authToken, serviceSid } = getTwilioConfig();
+  const params = new URLSearchParams({ Status: "approved" });
+  const twilioResponse = await fetch(`https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/Verifications/${encodeURIComponent(verificationSid)}`, {
+    method: "POST",
+    headers: {
+      authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body: params
+  });
+  if (!twilioResponse.ok) throw new WebhookError(502, "Twilio Verify could not record the verification.");
 }
 
 function pruneDeliveredEvents() {
   const now = Date.now();
-  for (const [eventId, expiresAt] of deliveredEvents) {
-    if (expiresAt <= now) deliveredEvents.delete(eventId);
+  for (const [eventId, delivery] of deliveredEvents) {
+    if (delivery.expiresAt <= now) deliveredEvents.delete(eventId);
   }
 }
 
@@ -131,12 +142,22 @@ async function deliverOnce(eventId, details) {
   pruneDeliveredEvents();
   if (deliveredEvents.has(eventId)) return;
   if (!inFlightEvents.has(eventId)) {
-    const delivery = sendTwilioSms(details)
-      .then(() => deliveredEvents.set(eventId, Date.now() + 15 * 60 * 1000))
+    const delivery = sendTwilioVerification(details)
+      .then((verificationSid) => deliveredEvents.set(eventId, {
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        to: details.to,
+        verificationSid
+      }))
       .finally(() => inFlightEvents.delete(eventId));
     inFlightEvents.set(eventId, delivery);
   }
   await inFlightEvents.get(eventId);
+}
+
+async function approveLatestVerification(phoneNumber) {
+  pruneDeliveredEvents();
+  const delivery = [...deliveredEvents.values()].reverse().find((item) => item.to === phoneNumber);
+  if (delivery) await approveTwilioVerification({ verificationSid: delivery.verificationSid });
 }
 
 export async function handleNeonAuthWebhook({ method, headers, body }) {
@@ -149,10 +170,20 @@ export async function handleNeonAuthWebhook({ method, headers, body }) {
     const event = JSON.parse(rawBody.toString("utf8"));
     const eventType = headerValue(headers, "x-neon-event-type");
     const eventId = headerValue(headers, "x-neon-event-id") || event.event_id;
-    if (eventType !== "send.otp" || event.event_type !== "send.otp" || !eventId || event.event_id !== eventId) {
+    if (eventType !== event.event_type || !eventId || event.event_id !== eventId) {
       throw new WebhookError(400, "Unsupported webhook event.");
     }
 
+    if (eventType === "phone_number.verified") {
+      const phoneNumber = event.event_data?.phone_number || event.user?.phone_number;
+      if (!/^\+[1-9]\d{1,14}$/.test(phoneNumber || "")) {
+        throw new WebhookError(400, "The verified phone number is missing.");
+      }
+      await approveLatestVerification(phoneNumber);
+      return response(200, JSON.stringify({ recorded: true }));
+    }
+
+    if (eventType !== "send.otp") throw new WebhookError(400, "Unsupported webhook event.");
     const eventData = event.event_data || {};
     if (eventData.delivery_preference !== "sms") {
       throw new WebhookError(400, "This endpoint only handles SMS OTP delivery.");
@@ -163,7 +194,7 @@ export async function handleNeonAuthWebhook({ method, headers, body }) {
       throw new WebhookError(400, "The SMS OTP payload is incomplete.");
     }
 
-    await deliverOnce(eventId, { to, otpCode, expiresAt: eventData.expires_at });
+    await deliverOnce(eventId, { to, otpCode });
     return response(200, JSON.stringify({ delivered: true }));
   } catch (error) {
     if (error instanceof SyntaxError) return response(400, JSON.stringify({ error: "Invalid JSON." }));
