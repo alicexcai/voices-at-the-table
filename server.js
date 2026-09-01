@@ -3,6 +3,9 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
+import { auth } from "./auth.js";
+import { pool } from "./db.js";
 import { handleNeonAuthWebhook, readRequestBody } from "./neon-auth-webhook.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url)).replace(/[\\/]+$/, "");
@@ -19,6 +22,124 @@ const mimeTypes = {
 function sendJson(res, status, body) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(body);
+}
+
+async function readJsonBody(req, maxBytes = 8 * 1024 * 1024) {
+  const body = await readRequestBody(req, maxBytes);
+  try {
+    return JSON.parse(body.toString("utf8"));
+  } catch {
+    throw new Error("Invalid JSON.");
+  }
+}
+
+async function getAuthenticatedUser(req) {
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+  return session?.user || null;
+}
+
+function isString(value, maxLength = 10000) {
+  return typeof value === "string" && value.length <= maxLength;
+}
+
+function isBoolean(value) {
+  return typeof value === "boolean";
+}
+
+function validateSubmission(body) {
+  if (!body || !isString(body.industry, 100) || !isString(body.role, 100) || !isString(body.occupation, 200) || !isString(body.city, 200) || !isString(body.transcript, 10000)) {
+    throw new Error("Some required response fields are missing.");
+  }
+  if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers)) {
+    throw new Error("The survey answers are invalid.");
+  }
+  if (!["isAnonymous", "roundtableInterest", "publishToWall", "useVoiceInRoundtable", "contactMe"].every((key) => isBoolean(body[key]))) {
+    throw new Error("The consent choices are invalid.");
+  }
+  if (body.displayName !== null && !isString(body.displayName, 200)) throw new Error("The display name is invalid.");
+  if (body.audioData !== null && !isString(body.audioData, 8 * 1024 * 1024)) throw new Error("The recording is too large.");
+  if (body.audioMimeType !== null && !isString(body.audioMimeType, 100)) throw new Error("The recording type is invalid.");
+  if (body.durationSeconds !== null && (!Number.isInteger(body.durationSeconds) || body.durationSeconds < 0 || body.durationSeconds > 60)) throw new Error("The recording duration is invalid.");
+}
+
+async function handleSubmission(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, JSON.stringify({ error: "Method not allowed." }));
+    return;
+  }
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    sendJson(res, 401, JSON.stringify({ error: "Sign in with your phone before submitting." }));
+    return;
+  }
+  const body = await readJsonBody(req);
+  validateSubmission(body);
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    const submission = await db.query(
+      `INSERT INTO public.submissions (
+        user_id, industry, role, occupation, city, display_name, is_anonymous, answers,
+        roundtable_interest, publish_to_wall, use_voice_in_roundtable, contact_me
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING id`,
+      [
+        user.id,
+        body.industry,
+        body.role,
+        body.occupation,
+        body.city,
+        body.isAnonymous ? null : body.displayName?.trim() || null,
+        body.isAnonymous,
+        body.answers,
+        body.roundtableInterest,
+        body.publishToWall,
+        body.useVoiceInRoundtable,
+        body.contactMe
+      ]
+    );
+    const submissionId = submission.rows[0].id;
+    await db.query(
+      `INSERT INTO public.voice_notes (
+        submission_id, user_id, industry, role, display_name, transcript,
+        audio_data, audio_mime_type, duration_seconds, publish_to_wall
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        submissionId,
+        user.id,
+        body.industry,
+        body.role,
+        body.isAnonymous ? "A participant" : body.displayName?.trim() || "A participant",
+        body.transcript.trim(),
+        body.audioData,
+        body.audioMimeType,
+        body.durationSeconds,
+        body.publishToWall
+      ]
+    );
+    await db.query("COMMIT");
+    sendJson(res, 200, JSON.stringify({ submission_id: submissionId }));
+  } catch (error) {
+    await db.query("ROLLBACK");
+    throw error;
+  } finally {
+    db.release();
+  }
+}
+
+async function handleVoices(req, res) {
+  if (req.method !== "GET") {
+    sendJson(res, 405, JSON.stringify({ error: "Method not allowed." }));
+    return;
+  }
+  const result = await pool.query(
+    `SELECT id, industry, role, display_name, transcript, audio_data, duration_seconds, created_at
+     FROM public.voice_notes
+     WHERE publish_to_wall = true
+     ORDER BY created_at DESC
+     LIMIT 100`
+  );
+  sendJson(res, 200, JSON.stringify(result.rows));
 }
 
 async function serveStatic(req, res) {
@@ -46,22 +167,41 @@ async function serveStatic(req, res) {
   }
 }
 
+const authHandler = toNodeHandler(auth);
+
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
-  if (pathname === "/api/neon-auth-webhook") {
-    let body;
-    try {
-      body = await readRequestBody(req);
-    } catch {
-      sendJson(res, 413, JSON.stringify({ error: "Request body is too large." }));
+  try {
+    if (pathname.startsWith("/api/auth/")) {
+      await authHandler(req, res);
       return;
     }
-    const result = await handleNeonAuthWebhook({ method: req.method, headers: req.headers, body });
-    res.writeHead(result.status, result.headers);
-    res.end(result.body);
-    return;
+    if (pathname === "/api/submissions") {
+      await handleSubmission(req, res);
+      return;
+    }
+    if (pathname === "/api/voices") {
+      await handleVoices(req, res);
+      return;
+    }
+    if (pathname === "/api/neon-auth-webhook") {
+      let body;
+      try {
+        body = await readRequestBody(req);
+      } catch {
+        sendJson(res, 413, JSON.stringify({ error: "Request body is too large." }));
+        return;
+      }
+      const result = await handleNeonAuthWebhook({ method: req.method, headers: req.headers, body });
+      res.writeHead(result.status, result.headers);
+      res.end(result.body);
+      return;
+    }
+    await serveStatic(req, res);
+  } catch (error) {
+    const status = error.message === "Invalid JSON." || error.message?.includes("required") || error.message?.includes("invalid") || error.message?.includes("too large") ? 400 : 500;
+    sendJson(res, status, JSON.stringify({ error: status === 500 ? "The request could not be completed." : error.message }));
   }
-  await serveStatic(req, res);
 });
 
 server.listen(port, "0.0.0.0", () => {

@@ -33,12 +33,12 @@ const decodeBase64Url = (value) => {
 
 const encodeBase64Url = (value) => Buffer.from(value).toString("base64url");
 
-async function readRequestBody(request) {
+async function readRequestBody(request, maxBytes = MAX_BODY_BYTES) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new WebhookError(413, "Request body is too large.");
+    if (size > maxBytes) throw new WebhookError(413, "Request body is too large.");
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);

@@ -1,14 +1,5 @@
-import { createClient } from "https://esm.sh/@neondatabase/neon-js@0.6.2-beta";
-
-const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.aws.neon.tech/neondb/auth";
-const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
 const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
-
-const client = createClient({
-  auth: { url: NEON_AUTH_URL, allowAnonymous: true },
-  dataApi: { url: NEON_DATA_API_URL }
-});
 
 const page = document.body.dataset.page;
 let catalog;
@@ -30,7 +21,19 @@ const formatDuration = (seconds) => {
 
 const currentUserFrom = (data) => data?.user || data?.session?.user || null;
 
-const isVerified = (user) => user?.emailVerified === true || user?.email_verified === true;
+const isVerified = (user) => user?.phoneNumberVerified === true || user?.phone_number_verified === true;
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || "Request could not be completed.");
+  return payload;
+}
 
 async function loadCatalog() {
   const response = await fetch(DATA_URL);
@@ -40,8 +43,9 @@ async function loadCatalog() {
 }
 
 async function getSession() {
-  const result = await client.auth.getSession({ query: { disableCookieCache: true } });
-  return { data: result.data, user: currentUserFrom(result.data), error: result.error };
+  const response = await fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" });
+  const data = response.ok ? await response.json() : null;
+  return { data, user: currentUserFrom(data), error: response.ok ? null : new Error("Session unavailable.") };
 }
 
 if (page === "survey") {
@@ -66,10 +70,8 @@ async function initSurvey() {
   let state = {
     industry: null,
     step: 0,
-    authMode: "email",
     authStep: "request",
     authMessage: "",
-    pendingEmail: "",
     pendingPhone: "",
     errors: "",
     user: null,
@@ -148,7 +150,7 @@ async function initSurvey() {
     try {
       const session = await getSession();
       state.user = session.user;
-      sessionStatus.textContent = state.user ? (isVerified(state.user) ? "Verified email · private profile" : "Verify your email to submit") : "Your email is private.";
+      sessionStatus.textContent = state.user ? (isVerified(state.user) ? "Verified phone · private profile" : "Verify your phone to submit") : "Your phone is private.";
     } catch {
       state.user = null;
       sessionStatus.textContent = "Sign in to save your response.";
@@ -197,98 +199,48 @@ async function initSurvey() {
 
   function renderAuthGate() {
     const wrapper = el("div", "auth-card");
-    wrapper.append(el("span", "section-kicker", "Private participant account"));
     const isWaitingForCode = state.authStep === "code";
-    const title = state.user
-      ? "One last step: verify your email."
-      : state.authMode === "phone"
-        ? isWaitingForCode ? "Enter the code from your phone." : "Use a linked phone number."
-        : isWaitingForCode ? "Check your email." : "Continue with your email.";
-    wrapper.append(el("h2", null, title));
-    const intro = state.user
-      ? "We sent a verification link to your inbox. Verify it, then return here to continue your response."
-      : state.authMode === "phone"
-        ? "Phone sign-in is available for existing accounts with a verified phone number. Email code is the fastest way to start a new response."
-        : isWaitingForCode
-          ? `We sent a one-time code to ${state.pendingEmail}. No password or account setup is needed.`
-          : "Enter your email and we will send a one-time code. Your email stays private and never appears on the wall.";
-    wrapper.append(el("p", "section-lede", intro));
+    wrapper.append(el("span", "section-kicker", "Private participant account"));
+    wrapper.append(el("h2", null, isWaitingForCode ? "Enter the code from your phone." : "Join with your phone."));
+    wrapper.append(el("p", "section-lede", isWaitingForCode
+      ? `We sent a one-time code to ${state.pendingPhone}. No password, email, or account setup is needed.`
+      : "Use your phone to create or access a private participant account. Your number is never shown on the wall."));
     const card = el("div", "form-card");
-    if (state.user) {
-      card.append(el("p", null, state.user.email || "Your email address"));
-      const actions = el("div", "voice-actions");
-      const resend = el("button", "btn primary small", "Send verification email");
-      const refresh = el("button", "btn ghost small", "I verified — refresh");
-      resend.type = refresh.type = "button";
-      resend.addEventListener("click", sendVerification);
-      refresh.addEventListener("click", async () => {
-        await refreshSession();
-        render();
-      });
-      actions.append(resend, refresh);
-      card.append(actions);
-      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
+    const form = document.createElement("form");
+    form.id = "authForm";
+    const grid = el("div", "field-grid");
+    if (isWaitingForCode) {
+      const codeField = textField("6-digit phone code", "authCode", "123456", true);
+      const codeInput = codeField.querySelector("input");
+      codeInput.inputMode = "numeric";
+      codeInput.autocomplete = "one-time-code";
+      codeInput.maxLength = 6;
+      grid.append(codeField);
     } else {
-      const form = document.createElement("form");
-      form.id = "authForm";
-      const grid = el("div", "field-grid");
-      if (state.authMode === "email" && isWaitingForCode) {
-        const codeField = textField("6-digit email code", "authCode", "123456", true);
-        const codeInput = codeField.querySelector("input");
-        codeInput.inputMode = "numeric";
-        codeInput.autocomplete = "one-time-code";
-        codeInput.maxLength = 6;
-        grid.append(codeField);
-      } else if (state.authMode === "phone" && isWaitingForCode) {
-        const codeField = textField("6-digit phone code", "authCode", "123456", true);
-        const codeInput = codeField.querySelector("input");
-        codeInput.inputMode = "numeric";
-        codeInput.autocomplete = "one-time-code";
-        codeInput.maxLength = 6;
-        grid.append(codeField);
-      } else if (state.authMode === "phone") {
-        const phoneField = textField("Phone number", "authPhone", "+1 555 123 4567", true, "tel");
-        phoneField.querySelector("input").pattern = "\\+[1-9]\\d{1,14}";
-        grid.append(phoneField);
-        grid.append(el("small", "auth-code-note", "Use international format, for example +15551234567."));
-      } else {
-        grid.append(textField("Email", "authEmail", "you@example.com", true, "email"));
-      }
-      const actions = el("div", "form-actions");
-      const submitLabel = isWaitingForCode
-        ? "Verify code"
-        : state.authMode === "phone" ? "Text me a code" : "Email me a code";
-      const submit = el("button", "btn primary next-btn", submitLabel);
-      submit.type = "submit";
-      actions.append(submit);
-      form.append(grid, actions);
-      form.addEventListener("submit", handleAuth);
-      card.append(form);
-      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
-      const switcher = el("p", "auth-switch");
-      switcher.append(document.createTextNode(state.authMode === "phone" ? "Prefer email? " : "Have a linked phone? "));
-      const switchButton = el("button", "text-button", state.authMode === "phone" ? "Use email instead" : "Use phone instead");
-      switchButton.type = "button";
-      switchButton.addEventListener("click", () => {
-        state.authMode = state.authMode === "phone" ? "email" : "phone";
+      const phoneField = textField("Phone number", "authPhone", "+1 555 123 4567", true, "tel");
+      phoneField.querySelector("input").pattern = "\\+[1-9]\\d{1,14}";
+      grid.append(phoneField);
+      grid.append(el("small", "auth-code-note", "Use international format, for example +15551234567."));
+    }
+    const actions = el("div", "form-actions");
+    const submit = el("button", "btn primary next-btn", isWaitingForCode ? "Verify code" : "Text me a code");
+    submit.type = "submit";
+    actions.append(submit);
+    form.append(grid, actions);
+    form.addEventListener("submit", handleAuth);
+    card.append(form);
+    if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
+    if (isWaitingForCode) {
+      const change = el("p", "auth-switch");
+      const changeButton = el("button", "text-button", "Use a different number");
+      changeButton.type = "button";
+      changeButton.addEventListener("click", () => {
         state.authStep = "request";
         state.authMessage = "";
         render();
       });
-      switcher.append(switchButton);
-      card.append(switcher);
-      if (isWaitingForCode) {
-        const change = el("p", "auth-switch");
-        const changeButton = el("button", "text-button", "Use a different address");
-        changeButton.type = "button";
-        changeButton.addEventListener("click", () => {
-          state.authStep = "request";
-          state.authMessage = "";
-          render();
-        });
-        change.append(changeButton);
-        card.append(change);
-      }
+      change.append(changeButton);
+      card.append(change);
     }
     wrapper.append(card);
     content.append(wrapper);
@@ -314,33 +266,19 @@ async function initSurvey() {
     const form = event.currentTarget;
     state.authMessage = "";
     try {
-      if (state.authMode === "phone") {
-        if (state.authStep === "request") {
-          const phoneNumber = form.elements.authPhone.value.trim();
-          const result = await client.auth.phoneNumber.sendOtp({ phoneNumber });
-          if (result.error) throw new Error(result.error.message || "We could not send a phone code.");
-          state.pendingPhone = phoneNumber;
-          state.authStep = "code";
-          state.authMessage = "A one-time code is on its way to your phone.";
-        } else {
-          const result = await client.auth.phoneNumber.verify({ phoneNumber: state.pendingPhone, code: form.elements.authCode.value.trim() });
-          if (result.error) throw new Error(result.error.message || "That phone code was not accepted.");
-          await refreshSession();
-          state.authStep = "request";
-        }
-      } else if (state.authStep === "request") {
-        const email = form.elements.authEmail.value.trim();
-        const result = await client.auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
-        if (result.error) throw new Error(result.error.message || "We could not send an email code.");
-        state.pendingEmail = email;
+      if (state.authStep === "request") {
+        const phoneNumber = form.elements.authPhone.value.trim();
+        await postJson("/api/auth/phone-number/send-otp", { phoneNumber });
+        state.pendingPhone = phoneNumber;
         state.authStep = "code";
-        state.authMessage = "A one-time code is on its way to your email.";
+        state.authMessage = "A one-time code is on its way to your phone.";
       } else {
-        const result = await client.auth.signIn.emailOtp({ email: state.pendingEmail, otp: form.elements.authCode.value.trim() });
-        if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
+        await postJson("/api/auth/phone-number/verify", {
+          phoneNumber: state.pendingPhone,
+          code: form.elements.authCode.value.trim()
+        });
         await refreshSession();
-        if (state.user) state.authStep = "request";
-        if (state.user && isVerified(state.user)) state.pendingEmail = "";
+        state.authStep = "request";
       }
       render();
     } catch (error) {
@@ -349,34 +287,22 @@ async function initSurvey() {
     }
   }
 
-  async function sendVerification() {
-    const email = state.user?.email || state.pendingEmail;
-    if (!email) return;
-    try {
-      const result = await client.auth.sendVerificationEmail({ email, callbackURL: window.location.href });
-      state.authMessage = result?.error?.message || "Verification email sent. Check your inbox, then return here.";
-    } catch (error) {
-      state.authMessage = error.message || "We could not send the verification email yet.";
-    }
-    render();
-  }
-
   function renderAbout() {
     content.append(el("span", "section-kicker", "01 / Your context"));
     content.append(el("h2", null, "A little about where you are coming from."));
-    content.append(el("p", "section-lede", "These details help us understand the shape of the conversation. Your email is managed by Auth and is never stored with your public voice."));
+    content.append(el("p", "section-lede", "These details help us understand the shape of the conversation. Your phone number is managed privately and is never stored with your public voice."));
     const card = el("div", "form-card");
     const title = el("h3", null, "About you");
     const intro = el("p", "card-intro", `You are joining the ${state.industry.label} room.`);
     card.append(title, intro);
     const grid = el("div", "field-grid");
-    const privateEmail = el("div", "field full");
-    const privateEmailLabel = el("label", null, "Verified email (private)");
-    const privateEmailInput = document.createElement("input");
-    privateEmailInput.value = state.user.email || "";
-    privateEmailInput.disabled = true;
-    privateEmail.append(privateEmailLabel, privateEmailInput);
-    grid.append(privateEmail);
+    const privatePhone = el("div", "field full");
+    const privatePhoneLabel = el("label", null, "Verified phone (private)");
+    const privatePhoneInput = document.createElement("input");
+    privatePhoneInput.value = state.user.phoneNumber || "";
+    privatePhoneInput.disabled = true;
+    privatePhone.append(privatePhoneLabel, privatePhoneInput);
+    grid.append(privatePhone);
     const displayMode = el("fieldset", "field full");
     displayMode.append(el("legend", null, "How should your voice be named on the wall?"));
     const displayChoices = el("div", "choice-grid");
@@ -628,25 +554,24 @@ async function initSurvey() {
       submitButton.textContent = "Saving your voice…";
     }
     try {
-      const submission = await client.rpc("submit_voice_submission", {
-        p_industry: state.industry.label,
-        p_role: state.about.role,
-        p_occupation: state.about.occupation,
-        p_city: state.about.city,
-        p_display_name: state.about.displayMode === "named" ? state.about.displayName : null,
-        p_is_anonymous: state.about.displayMode !== "named",
-        p_answers: state.answers,
-        p_roundtable_interest: state.consent.roundtableInterest,
-        p_publish_to_wall: state.consent.publishToWall,
-        p_use_voice_in_roundtable: state.consent.useVoiceInRoundtable,
-        p_contact_me: state.consent.contactMe,
-        p_transcript: state.voice.transcript,
-        p_audio_data: state.voice.audioData || null,
-        p_audio_mime_type: state.voice.audioMimeType || null,
-        p_duration_seconds: state.voice.durationSeconds
+      const submission = await postJson("/api/submissions", {
+        industry: state.industry.label,
+        role: state.about.role,
+        occupation: state.about.occupation,
+        city: state.about.city,
+        displayName: state.about.displayMode === "named" ? state.about.displayName : null,
+        isAnonymous: state.about.displayMode !== "named",
+        answers: state.answers,
+        roundtableInterest: state.consent.roundtableInterest,
+        publishToWall: state.consent.publishToWall,
+        useVoiceInRoundtable: state.consent.useVoiceInRoundtable,
+        contactMe: state.consent.contactMe,
+        transcript: state.voice.transcript,
+        audioData: state.voice.audioData || null,
+        audioMimeType: state.voice.audioMimeType || null,
+        durationSeconds: state.voice.durationSeconds
       });
-      if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
-      if (!submission.data?.submission_id) throw new Error(submission.data?.error || "Your response could not be saved.");
+      if (!submission.submission_id) throw new Error("Your response could not be saved.");
       state.saved = true;
       renderSuccess();
     } catch (error) {
@@ -753,8 +678,11 @@ async function initWall() {
   }
 
   try {
-    const result = await client.from("voice_notes").select("id, industry, role, display_name, transcript, audio_data, duration_seconds, created_at").eq("publish_to_wall", true).order("created_at", { ascending: false }).limit(100);
-    if (!result.error && Array.isArray(result.data)) voices = result.data;
+    const response = await fetch("/api/voices", { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data)) voices = data;
+    }
   } catch {
     voices = [];
   }
