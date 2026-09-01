@@ -39,7 +39,7 @@ async function loadCatalog() {
 }
 
 async function getSession() {
-  const result = await client.auth.getSession();
+  const result = await client.auth.getSession({ query: { disableCookieCache: true } });
   return { data: result.data, user: currentUserFrom(result.data), error: result.error };
 }
 
@@ -67,6 +67,7 @@ async function initSurvey() {
     step: 0,
     authMode: "sign-in",
     authMessage: "",
+    pendingEmail: "",
     errors: "",
     user: null,
     about: {
@@ -93,7 +94,8 @@ async function initSurvey() {
     recorder: null,
     recordingChunks: [],
     recordingStartedAt: null,
-    recordingTimer: null
+    recordingTimer: null,
+    recordingStream: null
   };
 
   try {
@@ -160,6 +162,7 @@ async function initSurvey() {
   }
 
   function render() {
+    if (state.industry && content.children.length) syncCurrentStep();
     const steps = getSteps();
     progress.replaceChildren();
     steps.forEach((item, index) => {
@@ -192,15 +195,29 @@ async function initSurvey() {
   function renderAuthGate() {
     const wrapper = el("div", "auth-card");
     wrapper.append(el("span", "section-kicker", "Private participant account"));
-    const title = el("h2", null, state.user ? "One last step: verify your email." : "Start with a private account.");
+    const title = el("h2", null, state.user || state.pendingEmail ? "One last step: verify your email." : "Start with a private account.");
     wrapper.append(title);
-    const intro = state.user
+    const intro = state.user || state.pendingEmail
       ? "We sent a verification link to your inbox. Verify it, then return here to continue your response."
       : "Your email helps us protect the conversation and contact you only when you say yes. It never appears on the wall.";
     wrapper.append(el("p", "section-lede", intro));
     const card = el("div", "form-card");
     if (state.user) {
       card.append(el("p", null, state.user.email || "Your email address"));
+      const actions = el("div", "voice-actions");
+      const resend = el("button", "btn primary small", "Send verification email");
+      const refresh = el("button", "btn ghost small", "I verified — refresh");
+      resend.type = refresh.type = "button";
+      resend.addEventListener("click", sendVerification);
+      refresh.addEventListener("click", async () => {
+        await refreshSession();
+        render();
+      });
+      actions.append(resend, refresh);
+      card.append(actions);
+      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
+    } else if (state.pendingEmail) {
+      card.append(el("p", null, state.pendingEmail));
       const actions = el("div", "voice-actions");
       const resend = el("button", "btn primary small", "Send verification email");
       const refresh = el("button", "btn ghost small", "I verified — refresh");
@@ -271,8 +288,10 @@ async function initSurvey() {
         ? await client.auth.signUp.email({ email, password, name: form.elements.authName.value.trim() })
         : await client.auth.signIn.email({ email, password });
       if (result.error) throw new Error(result.error.message || "Authentication failed.");
+      if (state.authMode === "sign-up") state.pendingEmail = email;
       await refreshSession();
-      if (state.authMode === "sign-up") await sendVerification();
+      if (state.authMode === "sign-up" || (state.user && !isVerified(state.user))) await sendVerification();
+      if (state.user && isVerified(state.user)) state.pendingEmail = "";
       render();
     } catch (error) {
       state.authMessage = error.message || "Authentication failed. Please try again.";
@@ -281,9 +300,10 @@ async function initSurvey() {
   }
 
   async function sendVerification() {
-    if (!state.user?.email) return;
+    const email = state.user?.email || state.pendingEmail;
+    if (!email) return;
     try {
-      const result = await client.auth.sendVerificationEmail({ email: state.user.email, callbackURL: window.location.href });
+      const result = await client.auth.sendVerificationEmail({ email, callbackURL: window.location.href });
       state.authMessage = result?.error?.message || "Verification email sent. Check your inbox, then return here.";
     } catch (error) {
       state.authMessage = error.message || "We could not send the verification email yet.";
@@ -484,7 +504,7 @@ async function initSurvey() {
     if (state.step > 0) {
       const back = el("button", "back-btn", "Back");
       back.type = "button";
-      back.addEventListener("click", () => { syncCurrentStep(); state.step -= 1; state.errors = ""; render(); });
+      back.addEventListener("click", () => { if (state.recorder) stopRecording(); syncCurrentStep(); state.step -= 1; state.errors = ""; render(); });
       actions.append(back);
     }
     const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
@@ -543,6 +563,7 @@ async function initSurvey() {
       return;
     }
     if (state.step < getSteps().length - 1) {
+      if (state.recorder) stopRecording();
       state.step += 1;
       render();
       return;
@@ -557,32 +578,25 @@ async function initSurvey() {
       submitButton.textContent = "Saving your voice…";
     }
     try {
-      const submission = await client.from("submissions").insert({
-        industry: state.industry.label,
-        role: state.about.role,
-        occupation: state.about.occupation,
-        city: state.about.city,
-        display_name: state.about.displayMode === "named" ? state.about.displayName : null,
-        is_anonymous: state.about.displayMode !== "named",
-        answers: state.answers,
-        roundtable_interest: state.consent.roundtableInterest,
-        publish_to_wall: state.consent.publishToWall,
-        use_voice_in_roundtable: state.consent.useVoiceInRoundtable,
-        contact_me: state.consent.contactMe
-      }).select("id").single();
-      if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
-      const voice = await client.from("voice_notes").insert({
-        submission_id: submission.data.id,
-        industry: state.industry.label,
-        role: state.about.role,
-        display_name: state.about.displayMode === "named" && state.about.displayName ? state.about.displayName : "A participant",
-        transcript: state.voice.transcript,
-        audio_data: state.voice.audioData || null,
-        audio_mime_type: state.voice.audioMimeType || null,
-        duration_seconds: state.voice.durationSeconds,
-        publish_to_wall: state.consent.publishToWall
+      const submission = await client.rpc("submit_voice_submission", {
+        p_industry: state.industry.label,
+        p_role: state.about.role,
+        p_occupation: state.about.occupation,
+        p_city: state.about.city,
+        p_display_name: state.about.displayMode === "named" ? state.about.displayName : null,
+        p_is_anonymous: state.about.displayMode !== "named",
+        p_answers: state.answers,
+        p_roundtable_interest: state.consent.roundtableInterest,
+        p_publish_to_wall: state.consent.publishToWall,
+        p_use_voice_in_roundtable: state.consent.useVoiceInRoundtable,
+        p_contact_me: state.consent.contactMe,
+        p_transcript: state.voice.transcript,
+        p_audio_data: state.voice.audioData || null,
+        p_audio_mime_type: state.voice.audioMimeType || null,
+        p_duration_seconds: state.voice.durationSeconds
       });
-      if (voice.error) throw new Error(voice.error.message || "Your voice note could not be saved.");
+      if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
+      if (!submission.data?.submission_id) throw new Error(submission.data?.error || "Your response could not be saved.");
       state.saved = true;
       renderSuccess();
     } catch (error) {
@@ -618,6 +632,7 @@ async function initSurvey() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      state.recordingStream = stream;
       const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
       state.recordingChunks = [];
       state.recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -635,6 +650,7 @@ async function initSurvey() {
           state.recorder = null;
           state.recordingChunks = [];
           state.recordingStartedAt = null;
+          state.recordingStream = null;
           state.errors = "";
           render();
         });
@@ -645,6 +661,9 @@ async function initSurvey() {
       state.recordingTimer = window.setTimeout(() => stopRecording(), MAX_RECORDING_SECONDS * 1000);
       render();
     } catch {
+      state.recordingStream?.getTracks().forEach((track) => track.stop());
+      state.recordingStream = null;
+      state.recorder = null;
       state.errors = "Microphone access was not granted. You can still submit the written transcript.";
       render();
     }
@@ -653,9 +672,15 @@ async function initSurvey() {
   function stopRecording() {
     if (state.recordingTimer) window.clearTimeout(state.recordingTimer);
     state.recordingTimer = null;
-    if (state.recorder && state.recorder.state !== "inactive") state.recorder.stop();
+    if (state.recorder && state.recorder.state !== "inactive") {
+      state.recorder.stop();
+    } else {
+      state.recordingStream?.getTracks().forEach((track) => track.stop());
+      state.recordingStream = null;
+    }
   }
 
+  window.addEventListener("pagehide", stopRecording);
   render();
 }
 
@@ -670,6 +695,14 @@ async function initWall() {
 
   try {
     await loadCatalog();
+  } catch (error) {
+    const empty = el("div", "voice-empty");
+    empty.append(el("h2", null, "The wall is taking a quiet moment."), el("p", null, error.message));
+    grid.append(empty);
+    return;
+  }
+
+  try {
     const result = await client.from("voice_notes").select("id, industry, role, display_name, transcript, audio_data, duration_seconds, created_at").eq("publish_to_wall", true).order("created_at", { ascending: false }).limit(100);
     if (!result.error && Array.isArray(result.data)) voices = result.data;
   } catch {
