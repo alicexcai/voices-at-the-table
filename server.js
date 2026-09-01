@@ -5,7 +5,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleNeonAuthWebhook, readRequestBody } from "./neon-auth-webhook.js";
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+const root = fileURLToPath(new URL(".", import.meta.url)).replace(/[\\/]+$/, "");
 const port = Number(process.env.PORT || 3000);
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
