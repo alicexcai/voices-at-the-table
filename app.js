@@ -16,7 +16,8 @@ let catalog;
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
+  if (text && typeof text === "object" && text.nodeType) node.append(text);
+  else if (text !== undefined) node.textContent = text;
   return node;
 };
 
@@ -65,9 +66,11 @@ async function initSurvey() {
   let state = {
     industry: null,
     step: 0,
-    authMode: "sign-in",
+    authMode: "email",
+    authStep: "request",
     authMessage: "",
     pendingEmail: "",
+    pendingPhone: "",
     errors: "",
     user: null,
     about: {
@@ -195,11 +198,20 @@ async function initSurvey() {
   function renderAuthGate() {
     const wrapper = el("div", "auth-card");
     wrapper.append(el("span", "section-kicker", "Private participant account"));
-    const title = el("h2", null, state.user || state.pendingEmail ? "One last step: verify your email." : "Start with a private account.");
-    wrapper.append(title);
-    const intro = state.user || state.pendingEmail
+    const isWaitingForCode = state.authStep === "code";
+    const title = state.user
+      ? "One last step: verify your email."
+      : state.authMode === "phone"
+        ? isWaitingForCode ? "Enter the code from your phone." : "Use a linked phone number."
+        : isWaitingForCode ? "Check your email." : "Continue with your email.";
+    wrapper.append(el("h2", null, title));
+    const intro = state.user
       ? "We sent a verification link to your inbox. Verify it, then return here to continue your response."
-      : "Your email helps us protect the conversation and contact you only when you say yes. It never appears on the wall.";
+      : state.authMode === "phone"
+        ? "Phone sign-in is available for existing accounts with a verified phone number. Email code is the fastest way to start a new response."
+        : isWaitingForCode
+          ? `We sent a one-time code to ${state.pendingEmail}. No password or account setup is needed.`
+          : "Enter your email and we will send a one-time code. Your email stays private and never appears on the wall.";
     wrapper.append(el("p", "section-lede", intro));
     const card = el("div", "form-card");
     if (state.user) {
@@ -216,47 +228,67 @@ async function initSurvey() {
       actions.append(resend, refresh);
       card.append(actions);
       if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
-    } else if (state.pendingEmail) {
-      card.append(el("p", null, state.pendingEmail));
-      const actions = el("div", "voice-actions");
-      const resend = el("button", "btn primary small", "Send verification email");
-      const refresh = el("button", "btn ghost small", "I verified — refresh");
-      resend.type = refresh.type = "button";
-      resend.addEventListener("click", sendVerification);
-      refresh.addEventListener("click", async () => {
-        await refreshSession();
-        render();
-      });
-      actions.append(resend, refresh);
-      card.append(actions);
-      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
     } else {
       const form = document.createElement("form");
       form.id = "authForm";
       const grid = el("div", "field-grid");
-      if (state.authMode === "sign-up") {
-        grid.append(textField("Name", "authName", "Your name", true));
+      if (state.authMode === "email" && isWaitingForCode) {
+        const codeField = textField("6-digit email code", "authCode", "123456", true);
+        const codeInput = codeField.querySelector("input");
+        codeInput.inputMode = "numeric";
+        codeInput.autocomplete = "one-time-code";
+        codeInput.maxLength = 6;
+        grid.append(codeField);
+      } else if (state.authMode === "phone" && isWaitingForCode) {
+        const codeField = textField("6-digit phone code", "authCode", "123456", true);
+        const codeInput = codeField.querySelector("input");
+        codeInput.inputMode = "numeric";
+        codeInput.autocomplete = "one-time-code";
+        codeInput.maxLength = 6;
+        grid.append(codeField);
+      } else if (state.authMode === "phone") {
+        const phoneField = textField("Phone number", "authPhone", "+1 555 123 4567", true, "tel");
+        phoneField.querySelector("input").pattern = "\\+[1-9]\\d{1,14}";
+        grid.append(phoneField);
+        grid.append(el("small", "auth-code-note", "Use international format, for example +15551234567."));
+      } else {
+        grid.append(textField("Email", "authEmail", "you@example.com", true, "email"));
       }
-      grid.append(textField("Email", "authEmail", "you@example.com", true, "email"));
-      grid.append(textField("Password", "authPassword", "At least 8 characters", true, "password"));
-      form.append(grid);
-      if (state.authMessage) form.append(el("p", "auth-message", state.authMessage));
-      const submit = el("button", "btn primary", state.authMode === "sign-up" ? "Create private account" : "Sign in to continue");
+      const actions = el("div", "form-actions");
+      const submitLabel = isWaitingForCode
+        ? "Verify code"
+        : state.authMode === "phone" ? "Text me a code" : "Email me a code";
+      const submit = el("button", "btn primary next-btn", submitLabel);
       submit.type = "submit";
-      form.append(el("div", "form-actions", submit));
+      actions.append(submit);
+      form.append(grid, actions);
       form.addEventListener("submit", handleAuth);
       card.append(form);
+      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
       const switcher = el("p", "auth-switch");
-      switcher.append(document.createTextNode(state.authMode === "sign-up" ? "Already have an account? " : "New here? "));
-      const switchButton = el("button", "text-button", state.authMode === "sign-up" ? "Sign in" : "Create an account");
+      switcher.append(document.createTextNode(state.authMode === "phone" ? "Prefer email? " : "Have a linked phone? "));
+      const switchButton = el("button", "text-button", state.authMode === "phone" ? "Use email instead" : "Use phone instead");
       switchButton.type = "button";
       switchButton.addEventListener("click", () => {
-        state.authMode = state.authMode === "sign-up" ? "sign-in" : "sign-up";
+        state.authMode = state.authMode === "phone" ? "email" : "phone";
+        state.authStep = "request";
         state.authMessage = "";
         render();
       });
       switcher.append(switchButton);
       card.append(switcher);
+      if (isWaitingForCode) {
+        const change = el("p", "auth-switch");
+        const changeButton = el("button", "text-button", "Use a different address");
+        changeButton.type = "button";
+        changeButton.addEventListener("click", () => {
+          state.authStep = "request";
+          state.authMessage = "";
+          render();
+        });
+        change.append(changeButton);
+        card.append(change);
+      }
     }
     wrapper.append(card);
     content.append(wrapper);
@@ -280,18 +312,36 @@ async function initSurvey() {
   async function handleAuth(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const email = form.elements.authEmail.value.trim();
-    const password = form.elements.authPassword.value;
     state.authMessage = "";
     try {
-      const result = state.authMode === "sign-up"
-        ? await client.auth.signUp.email({ email, password, name: form.elements.authName.value.trim() })
-        : await client.auth.signIn.email({ email, password });
-      if (result.error) throw new Error(result.error.message || "Authentication failed.");
-      if (state.authMode === "sign-up") state.pendingEmail = email;
-      await refreshSession();
-      if (state.authMode === "sign-up" || (state.user && !isVerified(state.user))) await sendVerification();
-      if (state.user && isVerified(state.user)) state.pendingEmail = "";
+      if (state.authMode === "phone") {
+        if (state.authStep === "request") {
+          const phoneNumber = form.elements.authPhone.value.trim();
+          const result = await client.auth.phoneNumber.sendOtp({ phoneNumber });
+          if (result.error) throw new Error(result.error.message || "We could not send a phone code.");
+          state.pendingPhone = phoneNumber;
+          state.authStep = "code";
+          state.authMessage = "A one-time code is on its way to your phone.";
+        } else {
+          const result = await client.auth.phoneNumber.verify({ phoneNumber: state.pendingPhone, code: form.elements.authCode.value.trim() });
+          if (result.error) throw new Error(result.error.message || "That phone code was not accepted.");
+          await refreshSession();
+          state.authStep = "request";
+        }
+      } else if (state.authStep === "request") {
+        const email = form.elements.authEmail.value.trim();
+        const result = await client.auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
+        if (result.error) throw new Error(result.error.message || "We could not send an email code.");
+        state.pendingEmail = email;
+        state.authStep = "code";
+        state.authMessage = "A one-time code is on its way to your email.";
+      } else {
+        const result = await client.auth.signIn.emailOtp({ email: state.pendingEmail, otp: form.elements.authCode.value.trim() });
+        if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
+        await refreshSession();
+        if (state.user) state.authStep = "request";
+        if (state.user && isVerified(state.user)) state.pendingEmail = "";
+      }
       render();
     } catch (error) {
       state.authMessage = error.message || "Authentication failed. Please try again.";
