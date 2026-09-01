@@ -12,12 +12,36 @@
   --maxw: 1060px;
 }
 
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--cream); color: var(--ink); font-family: "Pavanam", system-ui, sans-serif; font-size: 17px; line-height: 1.62; -webkit-font-smoothing: antialiased; }
+body > footer { padding: 32px 0 54px; text-align: center; font-size: 13.5px; color: var(--soft); }
+body > footer .mark { font-family: "Vidaloka", serif; font-size: 1rem; color: var(--ink); }
+h1, h2, h3 { font-family: "Vidaloka", Georgia, serif; font-weight: 400; line-height: 1.1; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.label { font-family: "Pavanam", sans-serif; font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: var(--ink); }
+
+.masthead { border-bottom: 2px solid var(--line); position: sticky; top: 0; background: var(--cream); z-index: 40; }
+.masthead .row { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; max-width: var(--maxw); margin: 0 auto; }
+.masthead .mark { font-family: "Vidaloka", serif; font-size: 1.15rem; letter-spacing: .02em; }
+.masthead .right { font-family: "Pavanam", sans-serif; font-size: 11.5px; letter-spacing: .2em; text-transform: uppercase; }
+
+.ticker { overflow: hidden; background: var(--ink); border-bottom: 2px solid var(--ink); white-space: nowrap; }
+.ticker .track { display: inline-block; white-space: nowrap; animation: scroll 60s linear infinite; will-change: transform; }
+.ticker .track span { font-family: "Vidaloka", serif; color: var(--cream); text-transform: uppercase; font-size: 1rem; letter-spacing: .14em; padding: 11px 0; display: inline-block; }
+.ticker .track .sep { padding: 0 26px; opacity: .55; }
+@keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .ticker .track { animation: none; } }
+
 .site-nav { display: flex; align-items: center; gap: 22px; font-size: 13px; letter-spacing: .07em; text-transform: uppercase; }
 .site-nav a { border-bottom: 1px solid transparent; transition: border-color .15s ease; }
 .site-nav a:hover, .site-nav a:focus-visible { border-color: var(--ink); }
 
 .page-main { min-height: calc(100vh - 58px); }
-.page-intro { padding: 72px 0 64px; border-bottom: 2px solid var(--line); }
+.page-intro { padding: 80px 0 60px; border-bottom: 2px solid var(--line); }
 .page-intro .label { display: block; margin-bottom: 18px; }
 .page-intro h1 { max-width: 720px; font-size: clamp(3rem, 8vw, 6rem); }
 .page-intro p { max-width: 62ch; margin-top: 22px; color: var(--soft); font-size: 1.1rem; }
@@ -34,7 +58,7 @@
 .survey-rail h2 { font-size: 1.2rem; }
 .survey-rail p { color: var(--soft); font-size: 13px; margin-top: 8px; line-height: 1.45; }
 .progress-list { display: grid; gap: 10px; margin-top: 26px; }
-.progress-step { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; text-align: left; }
+.progress-step { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center; color: var(--muted); font: inherit; font-size: 13px; text-align: left; }
 .progress-step .progress-num { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 50%; font-family: "Vidaloka", Georgia, serif; font-size: 13px; }
 .progress-step.is-current { color: var(--ink); }
 .progress-step.is-current .progress-num { background: var(--ink); color: var(--cream); }
@@ -46,7 +70,7 @@
 .section-kicker { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
 .survey-content h2 { font-size: clamp(2.2rem, 5vw, 4rem); max-width: 13ch; }
 .survey-content > .section-lede { max-width: 55ch; margin-top: 16px; color: var(--soft); }
-.form-card { margin-top: 34px; padding: 28px; border: 2px solid var(--line); background: rgba(255,255,255,.14); }
+.form-card { margin-top: 34px; padding: 28px; border: 2px solid var(--line); background: var(--cream); }
 .form-card + .form-card { margin-top: 18px; }
 .form-card h3 { font-size: 1.45rem; }
 .form-card .card-intro { margin-top: 8px; color: var(--soft); font-size: 14px; }
@@ -139,7 +163,7 @@
   .wall-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
-  .page-intro { padding: 52px 0 48px; }
+  .page-intro { padding: 60px 0 48px; }
   .page-intro h1 { font-size: clamp(2.8rem, 15vw, 4.5rem); }
   .field-grid, .choice-grid, .wall-grid { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
