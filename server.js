@@ -47,19 +47,26 @@ function isBoolean(value) {
 }
 
 function validateSubmission(body) {
-  if (!body || !isString(body.industry, 100) || !isString(body.role, 100) || !isString(body.occupation, 200) || !isString(body.city, 200) || !isString(body.transcript, 10000)) {
+  if (!body || !isString(body.industry, 100) || !isString(body.role, 100) || !isString(body.occupation, 200) || !isString(body.city, 200)) {
     throw new Error("Some required response fields are missing.");
   }
-  if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers)) {
+  if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers) || Object.keys(body.answers).length !== 3) {
     throw new Error("The survey answers are invalid.");
+  }
+  for (const answer of Object.values(body.answers)) {
+    if (!answer || typeof answer !== "object" || Array.isArray(answer) || !isString(answer.choice, 500) || !answer.choice.trim()) {
+      throw new Error("Each prompt needs a starting point.");
+    }
+    if (answer.text !== undefined && answer.text !== null && !isString(answer.text, 10000)) throw new Error("A text response is invalid.");
+    if (answer.audioData !== undefined && answer.audioData !== null && !isString(answer.audioData, 8 * 1024 * 1024)) throw new Error("A recording is too large.");
+    if (answer.audioMimeType !== undefined && answer.audioMimeType !== null && !isString(answer.audioMimeType, 100)) throw new Error("A recording type is invalid.");
+    if (answer.durationSeconds !== undefined && answer.durationSeconds !== null && (!Number.isInteger(answer.durationSeconds) || answer.durationSeconds < 0 || answer.durationSeconds > 60)) throw new Error("A recording duration is invalid.");
+    if (!answer.text?.trim() && !answer.audioData) throw new Error("Each prompt needs a voice note or written response.");
   }
   if (!["isAnonymous", "roundtableInterest", "publishToWall", "useVoiceInRoundtable", "contactMe"].every((key) => isBoolean(body[key]))) {
     throw new Error("The consent choices are invalid.");
   }
   if (body.displayName !== null && !isString(body.displayName, 200)) throw new Error("The display name is invalid.");
-  if (body.audioData !== null && !isString(body.audioData, 8 * 1024 * 1024)) throw new Error("The recording is too large.");
-  if (body.audioMimeType !== null && !isString(body.audioMimeType, 100)) throw new Error("The recording type is invalid.");
-  if (body.durationSeconds !== null && (!Number.isInteger(body.durationSeconds) || body.durationSeconds < 0 || body.durationSeconds > 60)) throw new Error("The recording duration is invalid.");
 }
 
 async function handleSubmission(req, res) {
@@ -68,12 +75,16 @@ async function handleSubmission(req, res) {
     return;
   }
   const user = await getAuthenticatedUser(req);
-  if (!user) {
+  if (!user || (!user.phoneNumberVerified && !user.phone_number_verified && !user.emailVerified && !user.email_verified)) {
     sendJson(res, 401, JSON.stringify({ error: "Sign in with your phone before submitting." }));
     return;
   }
   const body = await readJsonBody(req);
   validateSubmission(body);
+  const answerSummary = Object.fromEntries(Object.entries(body.answers).map(([id, answer]) => [id, {
+    choice: answer.choice.trim(),
+    text: answer.text?.trim() || ""
+  }]));
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
@@ -91,7 +102,7 @@ async function handleSubmission(req, res) {
         body.city,
         body.isAnonymous ? null : body.displayName?.trim() || null,
         body.isAnonymous,
-        body.answers,
+        answerSummary,
         body.roundtableInterest,
         body.publishToWall,
         body.useVoiceInRoundtable,
@@ -99,24 +110,27 @@ async function handleSubmission(req, res) {
       ]
     );
     const submissionId = submission.rows[0].id;
-    await db.query(
-      `INSERT INTO public.voice_notes (
-        submission_id, user_id, industry, role, display_name, transcript,
-        audio_data, audio_mime_type, duration_seconds, publish_to_wall
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [
-        submissionId,
-        user.id,
-        body.industry,
-        body.role,
-        body.isAnonymous ? "A participant" : body.displayName?.trim() || "A participant",
-        body.transcript.trim(),
-        body.audioData,
-        body.audioMimeType,
-        body.durationSeconds,
-        body.publishToWall
-      ]
-    );
+    const displayName = body.isAnonymous ? "A participant" : body.displayName?.trim() || "A participant";
+    for (const answer of Object.values(body.answers)) {
+      await db.query(
+        `INSERT INTO public.voice_notes (
+          submission_id, user_id, industry, role, display_name, transcript,
+          audio_data, audio_mime_type, duration_seconds, publish_to_wall
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          submissionId,
+          user.id,
+          body.industry,
+          body.role,
+          displayName,
+          answer.text?.trim() || answer.choice.trim() || "Shared by voice",
+          answer.audioData || null,
+          answer.audioMimeType || null,
+          answer.durationSeconds ?? null,
+          body.publishToWall
+        ]
+      );
+    }
     await db.query("COMMIT");
     sendJson(res, 200, JSON.stringify({ submission_id: submissionId }));
   } catch (error) {

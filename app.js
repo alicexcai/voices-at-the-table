@@ -99,12 +99,7 @@ async function initSurvey() {
       city: ""
     },
     answers: {},
-    voice: {
-      transcript: "",
-      audioData: "",
-      audioMimeType: "",
-      durationSeconds: null
-    },
+    openQuestions: {},
     consent: {
       roundtableInterest: false,
       publishToWall: false,
@@ -113,6 +108,7 @@ async function initSurvey() {
     },
     saved: false,
     recorder: null,
+    recordingQuestionId: null,
     recordingChunks: [],
     recordingStartedAt: null,
     recordingTimer: null,
@@ -152,7 +148,7 @@ async function initSurvey() {
     state.step = 0;
     state.errors = "";
     state.answers = {};
-    state.voice = { transcript: "", audioData: "", audioMimeType: "", durationSeconds: null };
+    state.openQuestions = { [state.industry.questions[0]?.id]: true };
     state.consent = { roundtableInterest: false, publishToWall: false, useVoiceInRoundtable: false, contactMe: false };
     picker.hidden = true;
     workspace.hidden = false;
@@ -180,9 +176,8 @@ async function initSurvey() {
   function getSteps() {
     return [
       { id: "about", label: "About" },
-      ...state.industry.questions.map((question) => ({ id: question.id, label: question.title })),
-      { id: "voice", label: "Voice note" },
-      { id: "consent", label: "Consent" }
+      { id: "questions", label: "Questions" },
+      { id: "participation", label: "Participation" }
     ];
   }
 
@@ -212,9 +207,8 @@ async function initSurvey() {
     }
     const step = steps[state.step];
     if (step.id === "about") renderAbout();
-    else if (step.id === "voice") renderVoice();
-    else if (step.id === "consent") renderConsent();
-    else renderQuestion(state.industry.questions.find((question) => question.id === step.id));
+    else if (step.id === "questions") renderQuestions();
+    else renderConsent();
   }
 
   function renderAuthGate() {
@@ -416,7 +410,7 @@ async function initSurvey() {
     });
     displayMode.append(displayChoices);
     grid.append(displayMode);
-    if (state.about.displayMode === "named") grid.append(textFieldFromState("Name for the wall", "displayName", "displayName", state.about.displayName, false));
+    if (state.about.displayMode === "named") grid.append(textFieldFromState("What should we call you on the wall?", "displayName", "displayName", state.about.displayName, false, "Your name or a name you choose"));
     const roleField = el("div", "field");
     const roleLabel = document.createElement("label");
     roleLabel.htmlFor = "role";
@@ -432,6 +426,7 @@ async function initSurvey() {
     roleField.append(roleLabel, role);
     grid.append(roleField);
     catalog.aboutFields.forEach((fieldDefinition) => grid.append(textFieldFromState(fieldDefinition.label, fieldDefinition.id, fieldDefinition.id, state.about[fieldDefinition.id], fieldDefinition.required, fieldDefinition.placeholder)));
+    grid.append(locationFieldFromState("Where are you joining from?", "city", state.about.city));
     card.append(grid);
     appendFormActions(card);
     content.append(card);
@@ -453,96 +448,122 @@ async function initSurvey() {
     return field;
   }
 
-  function renderQuestion(question) {
-    content.append(el("span", "section-kicker", "Listening prompt"));
-    content.append(el("h2", null, question.title));
-    content.append(el("p", "section-lede", question.prompt));
-    const card = el("div", "form-card");
-    if (question.type === "choice") {
-      const field = el("fieldset", "field");
-      field.append(el("legend", null, "Choose the answer that feels closest."));
+  function locationFieldFromState(label, id, value) {
+    const field = el("div", "field");
+    const labelNode = document.createElement("label");
+    labelNode.htmlFor = id;
+    labelNode.textContent = label;
+    const input = document.createElement("input");
+    input.id = id;
+    input.name = id;
+    input.type = "search";
+    input.placeholder = "Search city or region";
+    input.value = value || "";
+    input.required = true;
+    input.autocomplete = "address-level2";
+    input.setAttribute("list", "location-options");
+    const list = document.createElement("datalist");
+    list.id = "location-options";
+    catalog.locationOptions.forEach((location) => list.append(el("option", null, location)));
+    field.append(labelNode, input, list);
+    return field;
+  }
+
+  function renderQuestions() {
+    content.append(el("span", "section-kicker", "02 / Three prompts"));
+    content.append(el("h2", null, "Tell us what you are noticing."));
+    content.append(el("p", "section-lede", "Open each prompt in the order that feels right. Choose a quick starting point, then leave a voice note or write instead."));
+    const list = el("div", "question-list");
+    state.industry.questions.forEach((question, index) => {
+      const answer = state.answers[question.id] || { choice: "", text: "", audioData: "", audioMimeType: "", durationSeconds: null };
+      const card = el("article", `question-card ${state.openQuestions[question.id] ? "is-open" : ""}`);
+      const toggle = el("button", "question-toggle");
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", String(Boolean(state.openQuestions[question.id])));
+      toggle.setAttribute("aria-controls", `question-panel-${question.id}`);
+      toggle.append(el("span", "question-number", String(index + 1).padStart(2, "0")), el("span", "question-toggle-copy", question.title), el("span", "question-toggle-icon", state.openQuestions[question.id] ? "−" : "+"));
+      toggle.addEventListener("click", () => {
+        state.openQuestions[question.id] = !state.openQuestions[question.id];
+        render();
+      });
+      card.append(toggle);
+      const panel = el("div", "question-panel");
+      panel.id = `question-panel-${question.id}`;
+      panel.hidden = !state.openQuestions[question.id];
+      panel.append(el("p", "question-prompt", question.prompt));
+      const field = el("fieldset", "field question-choice");
+      field.append(el("legend", null, "What feels closest right now?"));
       const choices = el("div", "choice-grid");
-      question.options.forEach((option, index) => {
+      const options = catalog.questionOptions[question.id] || question.options || [];
+      options.forEach((option, optionIndex) => {
         const wrapper = el("div", "choice");
         const input = document.createElement("input");
         input.type = "radio";
-        input.name = question.id;
-        input.id = `${question.id}-${index}`;
+        input.name = `${question.id}-choice`;
+        input.id = `${question.id}-choice-${optionIndex}`;
         input.value = option;
-        input.checked = state.answers[question.id] === option;
+        input.checked = answer.choice === option;
         const label = document.createElement("label");
         label.htmlFor = input.id;
         label.textContent = option;
         wrapper.append(input, label);
+        input.addEventListener("change", () => {
+          answer.choice = option;
+          state.answers[question.id] = answer;
+        });
         choices.append(wrapper);
       });
       field.append(choices);
-      card.append(field);
-    } else {
-      const field = el("div", "field");
-      const label = document.createElement("label");
-      label.htmlFor = question.id;
-      label.textContent = "Your response";
-      const textarea = document.createElement("textarea");
-      textarea.id = question.id;
-      textarea.name = question.id;
-      textarea.placeholder = question.placeholder || "Write what comes to mind.";
-      textarea.required = question.required !== false;
-      textarea.value = state.answers[question.id] || "";
-      field.append(label, textarea);
-      card.append(field);
-    }
-    appendFormActions(card);
-    content.append(card);
-  }
-
-  function renderVoice() {
-    content.append(el("span", "section-kicker", "Voice note"));
-    content.append(el("h2", null, "Say it in your own voice."));
-    content.append(el("p", "section-lede", "A voice note can carry a pause, a laugh, or an uncertainty that text cannot. Recording is optional; the transcript below is always yours to edit."));
-    const card = el("div", "form-card");
-    const field = el("div", "field");
-    const label = document.createElement("label");
-    label.htmlFor = "transcript";
-    label.textContent = "What would you like people to hear?";
-    const transcript = document.createElement("textarea");
-    transcript.id = "transcript";
-    transcript.name = "transcript";
-    transcript.required = true;
-    transcript.placeholder = "Write a short transcript or use the recorder to capture a thought.";
-    transcript.value = state.voice.transcript;
-    field.append(label, transcript);
-    card.append(field);
-    const panel = el("div", "voice-panel");
-    const orb = el("div", `voice-orb ${state.recorder ? "is-recording" : ""}`);
-    orb.setAttribute("aria-hidden", "true");
-    orb.textContent = state.recorder ? "REC" : "VOICE";
-    const copy = el("div", "voice-copy");
-    copy.append(el("strong", null, state.voice.audioData ? "Voice note captured" : "Record a voice note"));
-    copy.append(el("p", null, state.voice.audioData ? `${formatDuration(state.voice.durationSeconds)} · You can record again.` : `Up to ${MAX_RECORDING_SECONDS} seconds. Your browser will ask for microphone permission.`));
-    const actions = el("div", "voice-actions");
-    const recordButton = el("button", "btn primary small", state.recorder ? "Stop recording" : "Start recording");
-    recordButton.type = "button";
-    recordButton.addEventListener("click", () => state.recorder ? stopRecording() : startRecording());
-    actions.append(recordButton);
-    if (state.voice.audioData) {
-      const playButton = el("button", "btn ghost small", "Play recording");
-      playButton.type = "button";
-      playButton.addEventListener("click", () => playAudio(state.voice.audioData, playButton));
-      actions.append(playButton);
-    }
-    copy.append(actions);
-    panel.append(orb, copy);
-    card.append(panel);
-    const status = el("p", "voice-status", state.errors);
-    card.append(status);
-    appendFormActions(card);
-    content.append(card);
+      panel.append(field);
+      const voicePanel = el("div", "voice-panel question-voice-panel");
+      const orb = el("div", `voice-orb ${state.recorder && state.recordingQuestionId === question.id ? "is-recording" : ""}`);
+      orb.setAttribute("aria-hidden", "true");
+      orb.textContent = state.recorder && state.recordingQuestionId === question.id ? "REC" : "VOICE";
+      const copy = el("div", "voice-copy");
+      copy.append(el("strong", null, answer.audioData ? "Voice note captured" : "Make this one heard"));
+      copy.append(el("p", null, answer.audioData ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
+      const actions = el("div", "voice-actions");
+      const recordButton = el("button", "btn primary small", state.recorder && state.recordingQuestionId === question.id ? "Stop recording" : "Record a voice note");
+      recordButton.type = "button";
+      recordButton.addEventListener("click", () => {
+        syncCurrentStep();
+        if (state.recorder) {
+          stopRecording();
+          return;
+        }
+        startRecording(question.id);
+      });
+      actions.append(recordButton);
+      if (answer.audioData) {
+        const playButton = el("button", "btn ghost small", "Play recording");
+        playButton.type = "button";
+        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton));
+        actions.append(playButton);
+      }
+      copy.append(actions);
+      voicePanel.append(orb, copy);
+      panel.append(voicePanel);
+      const textField = el("div", "field question-text-response");
+      const textLabel = document.createElement("label");
+      textLabel.htmlFor = `${question.id}-text`;
+      textLabel.textContent = "Or enter text instead";
+      const text = document.createElement("textarea");
+      text.id = `${question.id}-text`;
+      text.name = `${question.id}-text`;
+      text.placeholder = question.placeholder || "Write what comes to mind.";
+      text.value = answer.text || "";
+      textField.append(textLabel, text);
+      panel.append(textField);
+      card.append(panel);
+      list.append(card);
+    });
+    content.append(list);
+    appendFormActions(content);
   }
 
   function renderConsent() {
-    content.append(el("span", "section-kicker", "The table is built by consent"));
-    content.append(el("h2", null, "Choose what happens next."));
+    content.append(el("span", "section-kicker", "03 / Participation"));
+    content.append(el("h2", null, "Participation"));
     content.append(el("p", "section-lede", "You can change your mind later. Publishing and roundtable permissions are separate choices."));
     const card = el("div", "form-card");
     card.append(el("h3", null, "Roundtable + consent"));
@@ -591,18 +612,22 @@ async function initSurvey() {
         const input = document.querySelector(`#${key}`);
         if (input) state.about[key] = input.value.trim();
       });
-    } else if (step.id === "voice") {
-      const transcript = document.querySelector("#transcript");
-      if (transcript) state.voice.transcript = transcript.value.trim();
-    } else if (step.id === "consent") {
+    } else if (step.id === "questions") {
+      state.industry.questions.forEach((question) => {
+        const current = state.answers[question.id] || {};
+        const selected = document.querySelector(`[name="${question.id}-choice"]:checked`);
+        const text = document.querySelector(`#${question.id}-text`);
+        state.answers[question.id] = {
+          ...current,
+          choice: selected?.value || "",
+          text: text ? text.value.trim() : ""
+        };
+      });
+    } else {
       catalog.consent.forEach((consent) => {
         const input = document.querySelector(`[name="${consent.id}"]`);
         if (input) state.consent[consent.id] = input.checked;
       });
-    } else {
-      const selected = document.querySelector(`[name="${step.id}"]:checked`);
-      const textarea = document.querySelector(`#${step.id}`);
-      state.answers[step.id] = selected?.value || textarea?.value.trim() || "";
     }
   }
 
@@ -610,13 +635,16 @@ async function initSurvey() {
     const step = getSteps()[state.step];
     if (step.id === "about") {
       if (!state.about.role) return "Choose the role that feels closest to yours.";
-      if (!state.about.occupation || !state.about.city) return "Add your occupation and city so we can place your perspective in context.";
-    } else if (step.id === "voice") {
-      if (!state.voice.transcript) return "Add a transcript, even if you choose not to record audio.";
-    } else if (step.id === "consent") {
-      if (!state.consent.publishToWall) return "Choose whether you give permission for your response to appear on the Voices Wall.";
-    } else if (!state.answers[step.id]) {
-      return "Take a moment with this prompt before moving on.";
+      if (!state.about.occupation) return "Add your occupation so we can place your perspective in context.";
+      if (!catalog.locationOptions.includes(state.about.city)) return "Choose a location from the list so we can place your perspective in context.";
+    } else if (step.id === "questions") {
+      const incomplete = state.industry.questions.some((question) => {
+        const answer = state.answers[question.id] || {};
+        return !answer.choice || (!answer.text && !answer.audioData);
+      });
+      if (incomplete) return "Respond to all three prompts with a starting point and a voice note or written response.";
+    } else if (!state.consent.publishToWall) {
+      return "Choose whether you give permission for your response to appear on the Voices Wall.";
     }
     return "";
   }
@@ -655,11 +683,7 @@ async function initSurvey() {
         roundtableInterest: state.consent.roundtableInterest,
         publishToWall: state.consent.publishToWall,
         useVoiceInRoundtable: state.consent.useVoiceInRoundtable,
-        contactMe: state.consent.contactMe,
-        transcript: state.voice.transcript,
-        audioData: state.voice.audioData || null,
-        audioMimeType: state.voice.audioMimeType || null,
-        durationSeconds: state.voice.durationSeconds
+        contactMe: state.consent.contactMe
       };
       const submission = state.authProvider === "neon"
         ? await neonClient.rpc("submit_voice_submission", {
@@ -674,10 +698,10 @@ async function initSurvey() {
             p_publish_to_wall: responseData.publishToWall,
             p_use_voice_in_roundtable: responseData.useVoiceInRoundtable,
             p_contact_me: responseData.contactMe,
-            p_transcript: responseData.transcript,
-            p_audio_data: responseData.audioData,
-            p_audio_mime_type: responseData.audioMimeType,
-            p_duration_seconds: responseData.durationSeconds
+            p_transcript: null,
+            p_audio_data: null,
+            p_audio_mime_type: null,
+            p_duration_seconds: null
           })
         : { data: await postJson("/api/submissions", responseData), error: null };
       if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
@@ -710,15 +734,16 @@ async function initSurvey() {
     stepCount.textContent = "Response saved";
   }
 
-  async function startRecording() {
+  async function startRecording(questionId) {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      state.errors = "Voice recording is not supported in this browser. You can still submit the written transcript.";
+      state.errors = "Voice recording is not supported in this browser. You can still submit a written response.";
       render();
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       state.recordingStream = stream;
+      state.recordingQuestionId = questionId;
       const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
       state.recordingChunks = [];
       state.recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -730,10 +755,15 @@ async function initSurvey() {
         const blob = new Blob(state.recordingChunks, { type: state.recorder.mimeType || "audio/webm" });
         const reader = new FileReader();
         reader.addEventListener("loadend", () => {
-          state.voice.audioData = reader.result;
-          state.voice.audioMimeType = blob.type;
-          state.voice.durationSeconds = Math.max(1, Math.round((Date.now() - state.recordingStartedAt) / 1000));
+          const answer = state.answers[questionId] || { choice: "", text: "" };
+          state.answers[questionId] = {
+            ...answer,
+            audioData: reader.result,
+            audioMimeType: blob.type,
+            durationSeconds: Math.max(1, Math.round((Date.now() - state.recordingStartedAt) / 1000))
+          };
           state.recorder = null;
+          state.recordingQuestionId = null;
           state.recordingChunks = [];
           state.recordingStartedAt = null;
           state.recordingStream = null;
@@ -749,8 +779,9 @@ async function initSurvey() {
     } catch {
       state.recordingStream?.getTracks().forEach((track) => track.stop());
       state.recordingStream = null;
+      state.recordingQuestionId = null;
       state.recorder = null;
-      state.errors = "Microphone access was not granted. You can still submit the written transcript.";
+      state.errors = "Microphone access was not granted. You can still submit a written response.";
       render();
     }
   }

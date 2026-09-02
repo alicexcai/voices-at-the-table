@@ -1,28 +1,60 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "aboutFields": [
     {
-      "id": "displayName",
-      "label": "What should we call you on the wall?",
-      "type": "text",
-      "placeholder": "Your name or a name you choose",
-      "required": false
-    },
-    {
       "id": "occupation",
-      "label": "What is your occupation or area of study?",
+      "label": "What is your occupation?",
       "type": "text",
       "placeholder": "For example, high school teacher",
       "required": true
-    },
-    {
-      "id": "city",
-      "label": "Where are you joining from?",
-      "type": "text",
-      "placeholder": "City or region",
-      "required": true
     }
   ],
+  "locationOptions": [
+    "New York, NY, United States",
+    "Boston, MA, United States",
+    "Chicago, IL, United States",
+    "Washington, DC, United States",
+    "Los Angeles, CA, United States",
+    "San Francisco, CA, United States",
+    "Seattle, WA, United States",
+    "Austin, TX, United States",
+    "Toronto, Ontario, Canada",
+    "Vancouver, British Columbia, Canada",
+    "Mexico City, Mexico",
+    "London, England, United Kingdom",
+    "Paris, France",
+    "Berlin, Germany",
+    "Amsterdam, Netherlands",
+    "Nairobi, Kenya",
+    "Cape Town, South Africa",
+    "São Paulo, Brazil",
+    "New Delhi, India",
+    "Singapore",
+    "Tokyo, Japan",
+    "Sydney, Australia",
+    "Other location"
+  ],
+  "questionOptions": {
+    "relationship": [
+      "I use it often",
+      "I experiment with it occasionally",
+      "I encounter it through others",
+      "I have not used it yet",
+      "I am unsure"
+    ],
+    "hopeAndConcern": [
+      "I feel mostly hopeful",
+      "I feel both hopeful and concerned",
+      "I feel mostly concerned",
+      "I am still figuring it out"
+    ],
+    "perspectives": [
+      "People want different things from it",
+      "People disagree about what should be protected",
+      "People have different levels of power or say",
+      "I am not sure yet"
+    ]
+  },
   "consent": [
     {
       "id": "roundtableInterest",
@@ -56,18 +88,10 @@
       "questions": [
         {
           "id": "relationship",
-          "title": "Your relationship with generative AI",
-          "prompt": "How would you describe your current relationship with generative AI?",
+          "title": "AI in your world",
+          "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
           "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
-        },
-        {
-          "id": "workExperience",
-          "title": "AI and your work",
-          "prompt": "How do you experience generative AI in relation to your work, learning, or care responsibilities?",
-          "type": "textarea",
-          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
-          "required": true
         },
         {
           "id": "hopeAndConcern",
@@ -97,18 +121,10 @@
       "questions": [
         {
           "id": "relationship",
-          "title": "Your relationship with generative AI",
-          "prompt": "How would you describe your current relationship with generative AI?",
+          "title": "AI in your world",
+          "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
           "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
-        },
-        {
-          "id": "workExperience",
-          "title": "AI and your work",
-          "prompt": "How do you experience generative AI in relation to your work, care, or health journey?",
-          "type": "textarea",
-          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
-          "required": true
         },
         {
           "id": "hopeAndConcern",
@@ -138,18 +154,10 @@
       "questions": [
         {
           "id": "relationship",
-          "title": "Your relationship with generative AI",
-          "prompt": "How would you describe your current relationship with generative AI?",
+          "title": "AI in your world",
+          "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
           "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
-        },
-        {
-          "id": "workExperience",
-          "title": "AI and your work",
-          "prompt": "How do you experience generative AI in relation to your work, research, or learning?",
-          "type": "textarea",
-          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
-          "required": true
         },
         {
           "id": "hopeAndConcern",
@@ -179,18 +187,10 @@
       "questions": [
         {
           "id": "relationship",
-          "title": "Your relationship with generative AI",
-          "prompt": "How would you describe your current relationship with generative AI?",
+          "title": "AI in your world",
+          "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
           "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
-        },
-        {
-          "id": "workExperience",
-          "title": "AI and your work",
-          "prompt": "How do you experience generative AI in relation to your creative work, livelihood, or cultural life?",
-          "type": "textarea",
-          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
-          "required": true
         },
         {
           "id": "hopeAndConcern",
@@ -220,18 +220,10 @@
       "questions": [
         {
           "id": "relationship",
-          "title": "Your relationship with generative AI",
-          "prompt": "How would you describe your current relationship with generative AI?",
+          "title": "AI in your world",
+          "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
           "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
-        },
-        {
-          "id": "workExperience",
-          "title": "AI and your work",
-          "prompt": "How do you experience generative AI in relation to your work or public services?",
-          "type": "textarea",
-          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
-          "required": true
         },
         {
           "id": "hopeAndConcern",
@@ -261,18 +253,10 @@
       "questions": [
         {
           "id": "relationship",
-          "title": "Your relationship with generative AI",
-          "prompt": "How would you describe your current relationship with generative AI?",
+          "title": "AI in your world",
+          "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
           "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
-        },
-        {
-          "id": "workExperience",
-          "title": "AI and your work",
-          "prompt": "How do you experience generative AI in relation to your work or daily life?",
-          "type": "textarea",
-          "placeholder": "Tell us about a moment, routine, or change that stays with you.",
-          "required": true
         },
         {
           "id": "hopeAndConcern",
