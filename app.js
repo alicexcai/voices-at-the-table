@@ -30,6 +30,130 @@ const formatDuration = (seconds) => {
   return `${minutes}:${remaining}`;
 };
 
+let activePlayback;
+const waveformPlaceholder = Float32Array.from({ length: 64 }, (_, index) => 0.14 + Math.abs(Math.sin(index * 1.43)) * 0.24);
+
+function drawWaveform(canvas, values, progress = 0) {
+  if (!canvas) return;
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.floor((canvas.clientWidth || 640) * pixelRatio));
+  const height = Math.max(1, Math.floor((canvas.clientHeight || 64) * pixelRatio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  context.clearRect(0, 0, width, height);
+  if (!values?.length) return;
+
+  const style = getComputedStyle(canvas);
+  const baseColor = style.getPropertyValue("--waveform-base").trim() || "#000";
+  const progressColor = style.getPropertyValue("--waveform-progress").trim() || "#ef8c72";
+  const barCount = Math.max(12, Math.min(72, Math.floor(width / 6)));
+  const gap = Math.max(1, Math.floor(width / (barCount * 4)));
+  const barWidth = Math.max(2, Math.floor((width - gap * (barCount - 1)) / barCount));
+  const boundedProgress = Math.max(0, Math.min(1, progress));
+
+  context.lineCap = "round";
+  for (let index = 0; index < barCount; index += 1) {
+    const sampleIndex = Math.min(values.length - 1, Math.floor(index * values.length / barCount));
+    const sample = values instanceof Uint8Array
+      ? Math.abs(values[sampleIndex] - 128) / 128
+      : Math.abs(values[sampleIndex]);
+    const barHeight = Math.max(3 * pixelRatio, sample * height * 0.78);
+    const x = index * (barWidth + gap) + barWidth / 2;
+    const y = (height - barHeight) / 2;
+    context.strokeStyle = index / barCount < boundedProgress ? progressColor : baseColor;
+    context.lineWidth = barWidth;
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(x, y + barHeight);
+    context.stroke();
+  }
+}
+
+function resetPlayback(playback) {
+  if (playback.frame) window.cancelAnimationFrame(playback.frame);
+  playback.button.classList.remove("is-playing");
+  playback.button.textContent = playback.playLabel;
+  if (playback.canvas) drawWaveform(playback.canvas, playback.canvas.waveformData, 0);
+  if (activePlayback === playback) activePlayback = null;
+}
+
+function stopPlayback() {
+  if (!activePlayback) return;
+  const playback = activePlayback;
+  activePlayback = null;
+  playback.audio.pause();
+  playback.audio.currentTime = 0;
+  resetPlayback(playback);
+}
+
+async function playAudio(audioData, button, canvas, labels = {}) {
+  const playLabel = labels.play || "Play recording";
+  const pauseLabel = labels.pause || "Pause recording";
+  if (activePlayback?.button === button) {
+    if (activePlayback.audio.paused) {
+      try {
+        await activePlayback.audio.play();
+        button.classList.add("is-playing");
+        button.textContent = pauseLabel;
+      } catch {
+        resetPlayback(activePlayback);
+      }
+    } else {
+      activePlayback.audio.pause();
+      button.classList.remove("is-playing");
+      button.textContent = playLabel;
+    }
+    return;
+  }
+
+  stopPlayback();
+  const audio = new Audio(audioData);
+  const playback = { audio, button, canvas, frame: null, playLabel, pauseLabel };
+  activePlayback = playback;
+  const paint = () => {
+    if (activePlayback !== playback) return;
+    const progress = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+    drawWaveform(canvas, canvas?.waveformData, progress);
+    playback.frame = window.requestAnimationFrame(paint);
+  };
+  const finish = () => {
+    resetPlayback(playback);
+  };
+  audio.addEventListener("ended", finish, { once: true });
+  audio.addEventListener("error", finish, { once: true });
+  button.classList.add("is-playing");
+  button.textContent = pauseLabel;
+  try {
+    await audio.play();
+    paint();
+  } catch {
+    finish();
+  }
+}
+
+async function drawDecodedWaveform(canvas, audioData) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass || !canvas) return;
+  let audioContext;
+  try {
+    const response = await fetch(audioData);
+    const buffer = await response.arrayBuffer();
+    audioContext = new AudioContextClass();
+    const audioBuffer = await audioContext.decodeAudioData(buffer);
+    canvas.waveformData = audioBuffer.getChannelData(0);
+    if (canvas.isConnected) drawWaveform(canvas, canvas.waveformData);
+  } catch {
+    if (canvas.isConnected) drawWaveform(canvas, waveformPlaceholder);
+    return;
+  } finally {
+    await audioContext?.close().catch(() => {});
+  }
+}
+
 const currentUserFrom = (data) => data?.user || data?.session?.user || null;
 
 const isVerified = (user) => [
@@ -889,15 +1013,16 @@ async function initSurvey() {
       });
       field.append(choices);
       panel.append(field);
+      const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
       const voicePanel = el("div", "voice-panel question-voice-panel");
-      const orb = el("div", `voice-orb ${state.recorder && state.recordingQuestionId === question.id ? "is-recording" : ""}`);
+      const orb = el("div", `voice-orb ${isRecording ? "is-recording" : ""}`);
       orb.setAttribute("aria-hidden", "true");
-      orb.textContent = state.recorder && state.recordingQuestionId === question.id ? "REC" : "VOICE";
+      orb.textContent = isRecording ? "REC" : "VOICE";
       const copy = el("div", "voice-copy");
       copy.append(el("strong", null, answer.audioData ? "Voice note captured" : "Make this one heard"));
       copy.append(el("p", null, answer.audioData ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
       const actions = el("div", "voice-actions");
-      const recordButton = el("button", "btn primary small", state.recorder && state.recordingQuestionId === question.id ? "Stop recording" : "Record a voice note");
+      const recordButton = el("button", "btn primary small", isRecording ? "Stop recording" : "Record a voice note");
       recordButton.type = "button";
       recordButton.addEventListener("click", () => {
         syncCurrentStep();
@@ -908,14 +1033,30 @@ async function initSurvey() {
         startRecording(question.id);
       });
       actions.append(recordButton);
+      let waveform;
+      if (isRecording || answer.audioData) {
+        waveform = document.createElement("canvas");
+        waveform.className = `voice-waveform ${isRecording ? "live-waveform" : "playback-waveform"}`;
+        waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
+        waveform.height = 64;
+        waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
+        drawWaveform(waveform, waveformPlaceholder);
+        if (answer.audioData && !isRecording) {
+          drawDecodedWaveform(waveform, answer.audioData);
+        }
+      }
       if (answer.audioData) {
         const playButton = el("button", "btn ghost small", "Play recording");
         playButton.type = "button";
-        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton));
+        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, waveform, {
+          play: "Play recording",
+          pause: "Pause recording"
+        }));
         actions.append(playButton);
       }
       copy.append(actions);
       voicePanel.append(orb, copy);
+      if (waveform) voicePanel.append(waveform);
       panel.append(voicePanel);
       const textField = el("div", "field question-text-response");
       const textLabel = document.createElement("label");
@@ -1124,6 +1265,36 @@ async function initSurvey() {
     stepCount.textContent = "Response saved";
   }
 
+  function createLiveWaveform(stream, questionId) {
+    const canvas = document.querySelector(`[data-live-waveform="${questionId}"]`);
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!canvas || !AudioContextClass) return { stop: () => {} };
+
+    const audioContext = new AudioContextClass();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.78;
+    const source = audioContext.createMediaStreamSource(stream);
+    const samples = new Uint8Array(analyser.fftSize);
+    let frame;
+    source.connect(analyser);
+    const paint = () => {
+      analyser.getByteTimeDomainData(samples);
+      drawWaveform(canvas, samples);
+      frame = window.requestAnimationFrame(paint);
+    };
+    audioContext.resume().catch(() => {});
+    paint();
+
+    return {
+      stop: () => {
+        if (frame) window.cancelAnimationFrame(frame);
+        source.disconnect();
+        audioContext.close().catch(() => {});
+      }
+    };
+  }
+
   async function startRecording(questionId) {
     if (state.recorder || state.recordingStarting) return;
     state.recordingStarting = true;
@@ -1140,6 +1311,7 @@ async function initSurvey() {
       render();
       return;
     }
+    let liveWaveform = { stop: () => {} };
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1168,6 +1340,7 @@ async function initSurvey() {
         state.recordingChunks = [];
         state.recordingStartedAt = null;
         state.recordingStream = null;
+        liveWaveform.stop();
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -1207,8 +1380,10 @@ async function initSurvey() {
       state.recordingTimer = window.setTimeout(() => stopRecording(), MAX_RECORDING_SECONDS * 1000);
       state.errors = "";
       render();
+      liveWaveform = createLiveWaveform(stream, questionId);
     } catch (error) {
       state.recordingStarting = false;
+      liveWaveform.stop();
       state.recordingStream?.getTracks().forEach((track) => track.stop());
       state.recordingStream = null;
       state.recordingQuestionId = null;
@@ -1323,7 +1498,6 @@ async function initWall() {
   const introCount = document.querySelector("#wallIntroCount");
   let voices = [];
   let activeFilter = "All voices";
-  let activeAudio;
 
   try {
     await loadCatalog();
@@ -1391,36 +1565,21 @@ async function initWall() {
     const audioAvailable = Boolean(voice.audio_data);
     const duration = el("span", "voice-duration", formatDuration(voice.duration_seconds));
     if (audioAvailable) {
+      const waveform = document.createElement("canvas");
+      waveform.className = "voice-waveform wall-waveform";
+      waveform.height = 56;
+      waveform.setAttribute("aria-label", "Voice recording waveform");
+      drawWaveform(waveform, waveformPlaceholder);
+      drawDecodedWaveform(waveform, voice.audio_data);
+      card.append(waveform);
+
       const play = el("button", "play-button", "Play voice");
       play.type = "button";
-      play.addEventListener("click", () => {
-        if (activeAudio && activeAudio.button !== play) {
-          activeAudio.audio.pause();
-          activeAudio.button.classList.remove("is-playing");
-          activeAudio.button.textContent = "Play voice";
-        }
-        if (!activeAudio || activeAudio.button !== play) {
-          const audio = new Audio(voice.audio_data);
-          activeAudio = { audio, button: play };
-          play.classList.add("is-playing");
-          play.textContent = "Pause voice";
-          audio.addEventListener("ended", () => {
-            play.classList.remove("is-playing");
-            play.textContent = "Play voice";
-            activeAudio = null;
-          });
-          audio.play().catch(() => {
-            play.classList.remove("is-playing");
-            play.textContent = "Play voice";
-          });
-        } else {
-          activeAudio.audio.pause();
-          activeAudio.button.classList.remove("is-playing");
-          activeAudio.button.textContent = "Play voice";
-          activeAudio = null;
-        }
-      });
-      footer.append(play);
+      play.addEventListener("click", () => playAudio(voice.audio_data, play, waveform, {
+        play: "Play voice",
+        pause: "Pause voice"
+      }));
+      footer.append(duration, play);
     } else {
       footer.append(duration);
     }
@@ -1429,20 +1588,4 @@ async function initWall() {
   }
 
   renderVoices();
-}
-
-async function playAudio(audioData, button) {
-  const audio = new Audio(audioData);
-  button.textContent = "Pause recording";
-  await audio.play().catch(() => {});
-  audio.addEventListener("ended", () => { button.textContent = "Play recording"; });
-  button.onclick = () => {
-    if (audio.paused) {
-      audio.play();
-      button.textContent = "Pause recording";
-    } else {
-      audio.pause();
-      button.textContent = "Play recording";
-    }
-  };
 }
