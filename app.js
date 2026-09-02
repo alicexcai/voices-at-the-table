@@ -8,6 +8,7 @@ const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
 const DRAFT_STORAGE_PREFIX = "voices-at-the-table.survey-draft.v2";
 const NEON_SESSION_STORAGE_KEY = "voices-at-the-table.neon-session.v1";
+const AUTH_PROVIDER_STORAGE_KEY = "voices-at-the-table.auth-provider.v1";
 
 const neonClient = createClient({
   auth: { url: NEON_AUTH_URL, allowAnonymous: true },
@@ -228,23 +229,63 @@ const profileIdentity = (provider, user) => {
   return user?.name || "Participant";
 };
 
+function getAuthStorages() {
+  const storages = [];
+  for (const name of ["sessionStorage", "localStorage"]) {
+    try {
+      if (window[name]) storages.push(window[name]);
+    } catch {
+      continue;
+    }
+  }
+  return storages;
+}
+
+function writeAuthStorage(key, value) {
+  for (const storage of getAuthStorages()) {
+    try {
+      storage.setItem(key, value);
+    } catch {
+      continue;
+    }
+  }
+}
+
+function readAuthStorage(key) {
+  for (const storage of getAuthStorages()) {
+    try {
+      const value = storage.getItem(key);
+      if (value) return value;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function clearAuthStorage(key) {
+  for (const storage of getAuthStorages()) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      continue;
+    }
+  }
+}
+
 function persistNeonSession(data, user = currentUserFrom(data)) {
   const session = data?.session || (data?.token ? data : null);
   const token = session?.access_token || session?.token;
   if (!token || !user) return;
-  try {
-    sessionStorage.setItem(NEON_SESSION_STORAGE_KEY, JSON.stringify({
-      session: { ...session, token },
-      user
-    }));
-  } catch {
-    return;
-  }
+  writeAuthStorage(NEON_SESSION_STORAGE_KEY, JSON.stringify({
+    session: { ...session, token },
+    user
+  }));
 }
 
 function readPersistedNeonSession() {
   try {
-    const persisted = JSON.parse(sessionStorage.getItem(NEON_SESSION_STORAGE_KEY) || "null");
+    const persisted = JSON.parse(readAuthStorage(NEON_SESSION_STORAGE_KEY) || "null");
     const token = persisted?.session?.access_token || persisted?.session?.token;
     if (!token || !persisted?.user) return null;
     const tokenPayload = token.split(".")[1];
@@ -262,11 +303,20 @@ function readPersistedNeonSession() {
 }
 
 function clearPersistedNeonSession() {
-  try {
-    sessionStorage.removeItem(NEON_SESSION_STORAGE_KEY);
-  } catch {
-    return;
-  }
+  clearAuthStorage(NEON_SESSION_STORAGE_KEY);
+}
+
+function rememberAuthProvider(provider) {
+  writeAuthStorage(AUTH_PROVIDER_STORAGE_KEY, provider);
+}
+
+function readRememberedAuthProvider() {
+  const provider = readAuthStorage(AUTH_PROVIDER_STORAGE_KEY);
+  return provider === "better" || provider === "neon" ? provider : null;
+}
+
+function clearRememberedAuthProvider() {
+  clearAuthStorage(AUTH_PROVIDER_STORAGE_KEY);
 }
 
 async function signOutSession(provider) {
@@ -286,8 +336,13 @@ async function signOutSession(provider) {
 }
 
 async function getNeonAccessToken() {
-  const sessionResult = await neonClient.auth.getSession();
-  const session = sessionResult.data?.session;
+  let session = null;
+  try {
+    const sessionResult = await neonClient.auth.getSession();
+    session = sessionResult.data?.session;
+  } catch {
+    session = null;
+  }
   const token = session?.access_token || session?.token || readPersistedNeonSession()?.session?.token;
   if (!token) throw new Error("Your email session expired. Please sign in again.");
   return token;
@@ -359,32 +414,53 @@ async function loadCatalog() {
 }
 
 async function getSession() {
-  try {
-    const betterResponse = await fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" });
-    const betterData = betterResponse.ok ? await betterResponse.json() : null;
-    const betterUser = currentUserFrom(betterData);
-    const hasBetterSession = Boolean(betterData?.session && betterUser);
-    if (hasBetterSession) return { status: "logged-in", provider: "better", data: betterData, user: betterUser, error: null };
-  } catch {
-    // Fall through to the Neon Auth session.
+  const rememberedProvider = readRememberedAuthProvider();
+  const providerOrder = rememberedProvider === "neon"
+    ? ["neon", "better"]
+    : ["better", "neon"];
+  let lastError = null;
+  let neonData = null;
+
+  for (const provider of providerOrder) {
+    if (provider === "better") {
+      try {
+        const response = await fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" });
+        const data = response.ok ? await response.json() : null;
+        const user = currentUserFrom(data);
+        if (data?.session && user) {
+          if (readRememberedAuthProvider() === "neon") continue;
+          rememberAuthProvider("better");
+          return { status: "logged-in", provider: "better", data, user, error: null };
+        }
+      } catch (error) {
+        lastError = error;
+      }
+      continue;
+    }
+
+    try {
+      const neonResult = await neonClient.auth.getSession();
+      neonData = neonResult.data;
+      const user = currentUserFrom(neonResult.data);
+      if (neonResult.data?.session && user) {
+        if (readRememberedAuthProvider() === "better") continue;
+        persistNeonSession(neonResult.data, user);
+        rememberAuthProvider("neon");
+        return { status: "logged-in", provider: "neon", data: neonResult.data, user, error: neonResult.error };
+      }
+      const persisted = readPersistedNeonSession();
+      if (persisted) {
+        if (readRememberedAuthProvider() === "better") continue;
+        rememberAuthProvider("neon");
+        return { status: "logged-in", provider: "neon", data: persisted, user: persisted.user, error: null };
+      }
+      lastError = neonResult.error;
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  try {
-    const neonResult = await neonClient.auth.getSession();
-    const user = currentUserFrom(neonResult.data);
-    const hasNeonSession = Boolean(neonResult.data?.session && user);
-    if (hasNeonSession) {
-      persistNeonSession(neonResult.data, user);
-      return { status: "logged-in", provider: "neon", data: neonResult.data, user, error: neonResult.error };
-    }
-    const persisted = readPersistedNeonSession();
-    if (persisted) {
-      return { status: "logged-in", provider: "neon", data: persisted, user: persisted.user, error: null };
-    }
-    return { status: "logged-out", provider: null, data: neonResult.data, user: null, error: neonResult.error };
-  } catch (error) {
-    return { status: "logged-out", provider: null, data: null, user: null, error };
-  }
+  return { status: "logged-out", provider: null, data: neonData, user: null, error: lastError };
 }
 
 async function initSiteAuth() {
@@ -408,6 +484,7 @@ async function initSiteAuth() {
         logout.disabled = true;
         try {
           await signOutSession(authState.provider);
+          clearRememberedAuthProvider();
           authState = { status: "logged-out", provider: null, user: null };
           renderSiteAuth();
           window.dispatchEvent(new CustomEvent("authchange", { detail: authState }));
@@ -503,7 +580,7 @@ async function initSurvey() {
     await loadCatalog();
     await refreshSession();
     restoreDraft();
-    if (state.authStatus === "logged-in" && !state.submissionId) await loadExistingSubmission();
+    if (state.authStatus === "logged-in") await loadExistingSubmission();
     render();
   } catch (error) {
     content.textContent = error.message;
@@ -582,7 +659,10 @@ async function initSurvey() {
       const savedStep = Number.isInteger(draft.step) ? draft.step : 0;
       const migratedStep = draft.version >= 3 ? savedStep : savedStep === 1 ? 2 : savedStep === 2 ? 3 : savedStep;
       state.step = Math.max(0, Math.min(migratedStep, getSteps().length - 1));
-      state.submissionId = Number.isInteger(Number(draft.submissionId)) ? Number(draft.submissionId) : null;
+      const draftSubmissionId = Number(draft.submissionId);
+      state.submissionId = draft.submissionId !== null && Number.isInteger(draftSubmissionId) && draftSubmissionId > 0
+        ? draftSubmissionId
+        : null;
       state.editing = Boolean(draft.editing || state.submissionId);
       state.about = {
         ...state.about,
@@ -887,10 +967,11 @@ async function initSurvey() {
           });
           if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
           persistNeonSession(result.data);
+          rememberAuthProvider("neon");
           await refreshSession();
           if (state.authStatus !== "logged-in" || !state.user) throw new Error("We could not establish your verified email session.");
           restoreDraft();
-          if (!state.submissionId) await loadExistingSubmission();
+          await loadExistingSubmission();
           saveDraft();
           state.authStep = "request";
           state.pendingEmail = "";
@@ -906,9 +987,10 @@ async function initSurvey() {
           phoneNumber: state.pendingPhone,
           code: form.elements.authCode.value.trim()
         });
+        rememberAuthProvider("better");
         await refreshSession();
         restoreDraft();
-        if (!state.submissionId) await loadExistingSubmission();
+        await loadExistingSubmission();
         state.authStep = "request";
       }
       render();
@@ -1758,6 +1840,8 @@ async function initSurvey() {
 
   window.addEventListener("authchange", (event) => {
     const next = event.detail;
+    if (next.status === "logged-in" && state.authProvider && next.provider !== state.authProvider) return;
+    if (next.status !== "logged-in" && state.authStatus === "logged-in" && readRememberedAuthProvider() === state.authProvider) return;
     state.user = next.status === "logged-in" ? next.user : null;
     state.authProvider = next.status === "logged-in" ? next.provider : null;
     state.authStatus = next.status;
