@@ -76,6 +76,8 @@ function drawWaveform(canvas, values) {
 }
 
 function resetPlayback(playback) {
+  if (playback.frame) window.cancelAnimationFrame(playback.frame);
+  playback.audioContext?.close().catch(() => {});
   playback.button.classList.remove("is-playing");
   playback.button.textContent = playback.playLabel;
   if (activePlayback === playback) activePlayback = null;
@@ -90,13 +92,15 @@ function stopPlayback() {
   resetPlayback(playback);
 }
 
-async function playAudio(audioData, button, labels = {}) {
+async function playAudio(audioData, button, canvas, labels = {}) {
   const playLabel = labels.play || "Play recording";
   const pauseLabel = labels.pause || "Pause recording";
   if (activePlayback?.button === button) {
     if (activePlayback.audio.paused) {
       try {
         await activePlayback.audio.play();
+        await activePlayback.audioContext?.resume();
+        activePlayback.paint();
         button.classList.add("is-playing");
         button.textContent = pauseLabel;
       } catch {
@@ -104,6 +108,8 @@ async function playAudio(audioData, button, labels = {}) {
       }
     } else {
       activePlayback.audio.pause();
+      if (activePlayback.frame) window.cancelAnimationFrame(activePlayback.frame);
+      activePlayback.frame = null;
       button.classList.remove("is-playing");
       button.textContent = playLabel;
     }
@@ -112,7 +118,33 @@ async function playAudio(audioData, button, labels = {}) {
 
   stopPlayback();
   const audio = new Audio(audioData);
-  const playback = { audio, button, playLabel, pauseLabel };
+  const playback = { audio, button, canvas, playLabel, pauseLabel, frame: null, audioContext: null, analyser: null, samples: null };
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (AudioContextClass && canvas) {
+    try {
+      playback.audioContext = new AudioContextClass();
+      playback.analyser = playback.audioContext.createAnalyser();
+      playback.analyser.fftSize = 128;
+      playback.analyser.smoothingTimeConstant = 0.78;
+      playback.samples = new Uint8Array(playback.analyser.fftSize);
+      const source = playback.audioContext.createMediaElementSource(audio);
+      source.connect(playback.analyser);
+      playback.analyser.connect(playback.audioContext.destination);
+    } catch {
+      playback.audioContext?.close().catch(() => {});
+      playback.audioContext = null;
+      playback.analyser = null;
+      playback.samples = null;
+    }
+  }
+  playback.paint = () => {
+    if (activePlayback !== playback) return;
+    if (playback.analyser && playback.samples) {
+      playback.analyser.getByteTimeDomainData(playback.samples);
+      drawWaveform(canvas, playback.samples);
+    }
+    playback.frame = window.requestAnimationFrame(playback.paint);
+  };
   activePlayback = playback;
   const finish = () => {
     resetPlayback(playback);
@@ -123,6 +155,8 @@ async function playAudio(audioData, button, labels = {}) {
   button.textContent = pauseLabel;
   try {
     await audio.play();
+    await playback.audioContext?.resume();
+    playback.paint();
   } catch {
     finish();
   }
@@ -138,7 +172,9 @@ async function drawDecodedWaveform(canvas, audioData) {
     audioContext = new AudioContextClass();
     const audioBuffer = await audioContext.decodeAudioData(buffer);
     canvas.waveformData = audioBuffer.getChannelData(0);
-    if (canvas.isConnected) drawWaveform(canvas, canvas.waveformData);
+    if (canvas.isConnected && !(activePlayback?.canvas === canvas && !activePlayback.audio.paused)) {
+      drawWaveform(canvas, canvas.waveformData);
+    }
   } catch {
     return;
   } finally {
@@ -1039,7 +1075,7 @@ async function initSurvey() {
       if (answer.audioData) {
         const playButton = el("button", "btn ghost small", "Play recording");
         playButton.type = "button";
-        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, {
+        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, waveform, {
           play: "Play recording",
           pause: "Pause recording"
         }));
@@ -1565,7 +1601,7 @@ async function initWall() {
 
       const play = el("button", "play-button", "Play voice");
       play.type = "button";
-      play.addEventListener("click", () => playAudio(voice.audio_data, play, {
+      play.addEventListener("click", () => playAudio(voice.audio_data, play, waveform, {
         play: "Play voice",
         pause: "Pause voice"
       }));
