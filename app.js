@@ -282,7 +282,9 @@ async function initSurvey() {
       }
       render();
     } catch (error) {
-      state.authMessage = error.message || "Authentication failed. Please try again.";
+      state.authMessage = error.message === "Request could not be completed." && state.authStep === "request"
+        ? "Twilio needs an approved compliance profile before it can text an unverified number. For testing, add your number as a Verified Caller ID in Twilio."
+        : error.message || "Authentication failed. Please try again.";
       render();
     }
   }
