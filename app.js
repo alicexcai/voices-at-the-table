@@ -31,9 +31,8 @@ const formatDuration = (seconds) => {
 };
 
 let activePlayback;
-const waveformPlaceholder = Float32Array.from({ length: 64 }, (_, index) => 0.14 + Math.abs(Math.sin(index * 1.43)) * 0.24);
 
-function drawWaveform(canvas, values, progress = 0) {
+function drawWaveform(canvas, values) {
   if (!canvas) return;
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
   const width = Math.max(1, Math.floor((canvas.clientWidth || 640) * pixelRatio));
@@ -49,22 +48,25 @@ function drawWaveform(canvas, values, progress = 0) {
 
   const style = getComputedStyle(canvas);
   const baseColor = style.getPropertyValue("--waveform-base").trim() || "#000";
-  const progressColor = style.getPropertyValue("--waveform-progress").trim() || "#ef8c72";
   const barCount = Math.max(12, Math.min(72, Math.floor(width / 6)));
   const gap = Math.max(1, Math.floor(width / (barCount * 4)));
   const barWidth = Math.max(2, Math.floor((width - gap * (barCount - 1)) / barCount));
-  const boundedProgress = Math.max(0, Math.min(1, progress));
 
+  const amplitudeAt = (index) => values instanceof Uint8Array
+    ? Math.abs(values[index] - 128) / 128
+    : Math.abs(values[index]);
   context.lineCap = "round";
   for (let index = 0; index < barCount; index += 1) {
-    const sampleIndex = Math.min(values.length - 1, Math.floor(index * values.length / barCount));
-    const sample = values instanceof Uint8Array
-      ? Math.abs(values[sampleIndex] - 128) / 128
-      : Math.abs(values[sampleIndex]);
-    const barHeight = Math.max(3 * pixelRatio, sample * height * 0.78);
+    const start = Math.floor(index * values.length / barCount);
+    const end = Math.max(start + 1, Math.floor((index + 1) * values.length / barCount));
+    let amplitude = 0;
+    for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
+      amplitude = Math.max(amplitude, amplitudeAt(sampleIndex));
+    }
+    const barHeight = Math.max(3 * pixelRatio, amplitude * height * 0.78);
     const x = index * (barWidth + gap) + barWidth / 2;
     const y = (height - barHeight) / 2;
-    context.strokeStyle = index / barCount < boundedProgress ? progressColor : baseColor;
+    context.strokeStyle = baseColor;
     context.lineWidth = barWidth;
     context.beginPath();
     context.moveTo(x, y);
@@ -74,10 +76,8 @@ function drawWaveform(canvas, values, progress = 0) {
 }
 
 function resetPlayback(playback) {
-  if (playback.frame) window.cancelAnimationFrame(playback.frame);
   playback.button.classList.remove("is-playing");
   playback.button.textContent = playback.playLabel;
-  if (playback.canvas) drawWaveform(playback.canvas, playback.canvas.waveformData, 0);
   if (activePlayback === playback) activePlayback = null;
 }
 
@@ -90,7 +90,7 @@ function stopPlayback() {
   resetPlayback(playback);
 }
 
-async function playAudio(audioData, button, canvas, labels = {}) {
+async function playAudio(audioData, button, labels = {}) {
   const playLabel = labels.play || "Play recording";
   const pauseLabel = labels.pause || "Pause recording";
   if (activePlayback?.button === button) {
@@ -112,14 +112,8 @@ async function playAudio(audioData, button, canvas, labels = {}) {
 
   stopPlayback();
   const audio = new Audio(audioData);
-  const playback = { audio, button, canvas, frame: null, playLabel, pauseLabel };
+  const playback = { audio, button, playLabel, pauseLabel };
   activePlayback = playback;
-  const paint = () => {
-    if (activePlayback !== playback) return;
-    const progress = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.currentTime / audio.duration : 0;
-    drawWaveform(canvas, canvas?.waveformData, progress);
-    playback.frame = window.requestAnimationFrame(paint);
-  };
   const finish = () => {
     resetPlayback(playback);
   };
@@ -129,7 +123,6 @@ async function playAudio(audioData, button, canvas, labels = {}) {
   button.textContent = pauseLabel;
   try {
     await audio.play();
-    paint();
   } catch {
     finish();
   }
@@ -147,7 +140,6 @@ async function drawDecodedWaveform(canvas, audioData) {
     canvas.waveformData = audioBuffer.getChannelData(0);
     if (canvas.isConnected) drawWaveform(canvas, canvas.waveformData);
   } catch {
-    if (canvas.isConnected) drawWaveform(canvas, waveformPlaceholder);
     return;
   } finally {
     await audioContext?.close().catch(() => {});
@@ -1040,7 +1032,6 @@ async function initSurvey() {
         waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
         waveform.height = 64;
         waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
-        drawWaveform(waveform, waveformPlaceholder);
         if (answer.audioData && !isRecording) {
           drawDecodedWaveform(waveform, answer.audioData);
         }
@@ -1048,7 +1039,7 @@ async function initSurvey() {
       if (answer.audioData) {
         const playButton = el("button", "btn ghost small", "Play recording");
         playButton.type = "button";
-        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, waveform, {
+        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, {
           play: "Play recording",
           pause: "Pause recording"
         }));
@@ -1569,13 +1560,12 @@ async function initWall() {
       waveform.className = "voice-waveform live-waveform wall-waveform";
       waveform.height = 56;
       waveform.setAttribute("aria-label", "Voice recording waveform");
-      drawWaveform(waveform, waveformPlaceholder);
       drawDecodedWaveform(waveform, voice.audio_data);
       card.append(waveform);
 
       const play = el("button", "play-button", "Play voice");
       play.type = "button";
-      play.addEventListener("click", () => playAudio(voice.audio_data, play, waveform, {
+      play.addEventListener("click", () => playAudio(voice.audio_data, play, {
         play: "Play voice",
         pause: "Pause voice"
       }));
