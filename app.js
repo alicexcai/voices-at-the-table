@@ -554,8 +554,8 @@ async function initSurvey() {
             name: "Participant"
           });
           if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
-          if (!result.data?.user || !result.data?.session) throw new Error("We could not establish your verified email session.");
           await refreshSession();
+          if (state.authStatus !== "logged-in" || !state.user) throw new Error("We could not establish your verified email session.");
           saveDraft();
           state.authStep = "request";
           state.pendingEmail = "";
