@@ -713,7 +713,7 @@ async function initSurvey() {
       state.industry = industry;
       state.submissionId = Number(submission.submission_id);
       state.editing = true;
-      state.step = 0;
+      state.step = 1;
       state.about.displayMode = submission.is_anonymous ? "anonymous" : "named";
       state.about.displayName = submission.display_name || "";
       state.about.roles = typeof submission.role === "string" ? submission.role.split(/\s*,\s*/).filter(Boolean) : [];
@@ -739,6 +739,10 @@ async function initSurvey() {
           durationSeconds: null
         }];
       }));
+      state.openQuestions = Object.fromEntries(industry.questions.map((question) => [
+        question.id,
+        Boolean(state.answers[question.id]?.choice || state.answers[question.id]?.text || state.answers[question.id]?.audioData)
+      ]));
       state.consent = {
         roundtableInterest: Boolean(submission.roundtable_interest),
         useVoiceInRoundtable: Boolean(submission.use_voice_in_roundtable),
@@ -1380,12 +1384,13 @@ async function initSurvey() {
     const list = el("div", "question-list");
     state.industry.questions.forEach((question, index) => {
       const answer = state.answers[question.id] || { choice: "", text: "", audioData: "", audioMimeType: "", durationSeconds: null };
+      const hasSavedAnswer = Boolean(answer.choice || answer.text || answer.audioData);
       const card = el("article", `question-card ${state.openQuestions[question.id] ? "is-open" : ""}`);
       const toggle = el("button", "question-toggle");
       toggle.type = "button";
       toggle.setAttribute("aria-expanded", String(Boolean(state.openQuestions[question.id])));
       toggle.setAttribute("aria-controls", `question-panel-${question.id}`);
-      toggle.append(el("span", "question-number", String(index + 1).padStart(2, "0")), el("span", "question-toggle-copy", question.title), el("span", "question-toggle-icon", state.openQuestions[question.id] ? "−" : "+"));
+      toggle.append(el("span", "question-number", String(index + 1).padStart(2, "0")), el("span", "question-toggle-copy", question.title), hasSavedAnswer ? el("span", "question-toggle-status", "Saved") : el("span", "question-toggle-status"), el("span", "question-toggle-icon", state.openQuestions[question.id] ? "−" : "+"));
       toggle.addEventListener("click", () => {
         state.openQuestions[question.id] = !state.openQuestions[question.id];
         render();

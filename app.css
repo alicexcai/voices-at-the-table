@@ -96,10 +96,11 @@ a { color: inherit; text-decoration: none; }
 .question-list { display: grid; gap: 14px; margin-top: 34px; }
 .question-card { border: 2px solid var(--line); background: var(--cream); }
 .question-card.is-open { background: var(--card); }
-.question-toggle { display: grid; grid-template-columns: 42px minmax(0, 1fr) 30px; gap: 14px; align-items: center; width: 100%; padding: 20px 22px; border: 0; background: transparent; color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
+.question-toggle { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto 30px; gap: 14px; align-items: center; width: 100%; padding: 20px 22px; border: 0; background: transparent; color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
 .question-toggle:hover { background: var(--yellow); }
 .question-number { font-family: "Vidaloka", Georgia, serif; font-size: 1.4rem; }
 .question-toggle-copy { font-family: "Vidaloka", Georgia, serif; font-size: 1.35rem; }
+.question-toggle-status { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); }
 .question-toggle-icon { font-family: "Vidaloka", Georgia, serif; font-size: 1.7rem; line-height: 1; text-align: center; }
 .question-panel { padding: 0 22px 24px; }
 .question-prompt { max-width: 58ch; color: var(--soft); }
