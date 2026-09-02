@@ -56,9 +56,18 @@ a { color: inherit; text-decoration: none; }
 .meta-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--coral); }
 
 .app-wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
-.app-bar { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 22px 0; border-bottom: 2px solid var(--line); }
+.app-bar { display: flex; justify-content: space-between; align-items: center; gap: 28px; padding: 22px 0; border-bottom: 2px solid var(--line); }
 .app-bar .step-count { font-family: "Vidaloka", Georgia, serif; font-size: 1.1rem; }
 .app-bar .save-note { color: var(--soft); font-size: 13px; }
+.survey-step-summary { display: grid; gap: 2px; min-width: 0; }
+.survey-time-progress { display: grid; grid-template-columns: auto minmax(120px, 190px); align-items: center; gap: 12px; }
+.survey-time-label { color: var(--soft); font-size: 13px; white-space: nowrap; }
+.progress-meter { width: 100%; height: 8px; overflow: hidden; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--cream); }
+.progress-meter-fill { display: block; width: 0; height: 100%; background: var(--yellow); transition: width .25s ease; }
+.survey-layout.is-auth-gate { display: block; padding-top: 64px; }
+.survey-layout.is-auth-gate .survey-rail { display: none; }
+.survey-layout.is-auth-gate .survey-content { max-width: 520px; margin: 0 auto; }
+.survey-layout.is-auth-gate .auth-card { max-width: 470px; }
 
 .survey-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 56px; padding: 48px 0 96px; }
 .survey-rail { position: sticky; top: 88px; align-self: start; }
@@ -117,7 +126,9 @@ a { color: inherit; text-decoration: none; }
 .location-results[hidden] { display: none; }
 .location-result { width: 100%; border: 0; background: transparent; padding: 9px 10px; color: var(--ink); cursor: pointer; font: inherit; font-size: 14px; text-align: left; }
 .location-result:hover, .location-result:focus-visible { background: var(--yellow); outline: 0; }
+.occupation-other-result { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 13px; }
 .location-empty { display: block; padding: 7px 10px; }
+.field-note { color: var(--soft); font-size: 13px; }
 .consent-row { display: flex; gap: 10px; align-items: flex-start; color: var(--soft); font-size: 14px; line-height: 1.45; cursor: pointer; }
 .consent-row input { width: 18px; min-width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--ink); }
 .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
@@ -208,12 +219,16 @@ a { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .voice-orb.is-recording { animation: none; } }
 @media (max-width: 820px) {
   .masthead .row { flex-wrap: wrap; gap: 10px 18px; }
+  .app-bar { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .survey-time-progress { width: 100%; grid-template-columns: auto minmax(0, 1fr); }
+  .survey-time-label { font-size: 12px; }
+  .survey-layout.is-auth-gate { padding-top: 48px; }
   .masthead .right { margin-left: auto; }
   .site-auth { margin-left: auto; }
   .site-nav { order: 3; width: 100%; justify-content: flex-start; padding-top: 4px; }
   .survey-layout { grid-template-columns: 1fr; gap: 28px; }
   .survey-rail { position: static; }
-  .progress-list { grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .progress-list { grid-template-columns: repeat(4, 1fr); gap: 7px; }
   .progress-step { grid-template-columns: 28px; justify-items: center; }
   .progress-step span:last-child { display: none; }
   .wall-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -227,6 +242,9 @@ a { color: inherit; text-decoration: none; }
   .field-grid, .choice-grid, .wall-grid { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
   .form-card { padding: 20px; }
+  .survey-time-progress { grid-template-columns: 1fr; gap: 5px; }
+  .progress-meter { height: 7px; }
+  .survey-layout.is-auth-gate { padding-top: 36px; }
   .voice-panel { padding: 14px; }
   .voice-audio-row { gap: 10px; }
   .voice-audio-row .voice-actions { gap: 7px; }

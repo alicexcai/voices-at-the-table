@@ -359,8 +359,9 @@ if (page === "profile") {
 initSiteAuth();
 
 async function initSurvey() {
-  const picker = document.querySelector("#industryPicker");
-  const choices = document.querySelector("#industryChoices");
+  const appBar = document.querySelector("#surveyAppBar");
+  const progressMeter = document.querySelector(".progress-meter");
+  const progressBar = document.querySelector("#surveyProgressBar");
   const workspace = document.querySelector("#surveyWorkspace");
   const progress = document.querySelector("#surveyProgress");
   const content = document.querySelector("#surveyContent");
@@ -384,8 +385,10 @@ async function initSurvey() {
     about: {
       displayMode: "anonymous",
       displayName: "",
-      role: "",
+      roles: [],
       occupation: "",
+      occupationMode: "",
+      occupationQuery: "",
       city: "",
       locationQuery: ""
     },
@@ -410,54 +413,11 @@ async function initSurvey() {
   try {
     await loadCatalog();
     await refreshSession();
-    if (restoreDraft()) {
-      picker.hidden = true;
-      workspace.hidden = false;
-      industryName.textContent = state.industry.label;
-      industryDescriptor.textContent = state.industry.descriptor;
-      render();
-    } else {
-      renderIndustryChoices();
-    }
-  } catch (error) {
-    choices.textContent = error.message;
-    return;
-  }
-
-  function renderIndustryChoices() {
-    choices.replaceChildren();
-    catalog.industries.forEach((industry) => {
-      const wrapper = el("div", "choice");
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = "industry";
-      input.id = `industry-${industry.id}`;
-      input.value = industry.id;
-      input.disabled = industry.status !== "open";
-      const label = document.createElement("label");
-      label.htmlFor = input.id;
-      label.append(el("strong", null, industry.label));
-      label.append(el("span", "industry-description", industry.status === "open" ? industry.descriptor : "Open later"));
-      wrapper.append(input, label);
-      input.addEventListener("change", () => chooseIndustry(industry.id));
-      choices.append(wrapper);
-    });
-  }
-
-  async function chooseIndustry(industryId) {
-    state.industry = catalog.industries.find((item) => item.id === industryId);
-    state.step = 0;
-    state.errors = "";
-    state.answers = {};
-    state.openQuestions = {};
-    state.consent = { roundtableInterest: false, useVoiceInRoundtable: false, contactMe: false };
-    picker.hidden = true;
-    workspace.hidden = false;
-    industryName.textContent = state.industry.label;
-    industryDescriptor.textContent = state.industry.descriptor;
-    await refreshSession();
-    saveDraft();
+    restoreDraft();
     render();
+  } catch (error) {
+    content.textContent = error.message;
+    return;
   }
 
   async function refreshSession() {
@@ -488,7 +448,7 @@ async function initSurvey() {
     if (!key) return false;
     if (!state.industry) return false;
     const draft = {
-      version: 2,
+      version: 3,
       industryId: state.industry.id,
       step: state.step,
       about: state.about,
@@ -527,11 +487,19 @@ async function initSurvey() {
       const industry = catalog.industries.find((item) => item.id === draft?.industryId && item.status === "open");
       if (!industry) return false;
       state.industry = industry;
-      state.step = Math.max(0, Math.min(Number.isInteger(draft.step) ? draft.step : 0, getSteps().length - 1));
+      const savedStep = Number.isInteger(draft.step) ? draft.step : 0;
+      const migratedStep = draft.version >= 3 ? savedStep : savedStep === 1 ? 2 : savedStep === 2 ? 3 : savedStep;
+      state.step = Math.max(0, Math.min(migratedStep, getSteps().length - 1));
       state.about = {
         ...state.about,
         ...(draft.about && typeof draft.about === "object" ? draft.about : {})
       };
+      state.about.roles = (Array.isArray(state.about.roles)
+        ? state.about.roles
+        : typeof state.about.role === "string" && state.about.role ? [state.about.role] : [])
+        .filter((roleName) => typeof roleName === "string" && industry.roles.includes(roleName));
+      state.about.occupationQuery = state.about.occupationQuery || state.about.occupation || "";
+      state.about.occupationMode = state.about.occupationMode || (state.about.occupation ? "other" : "");
       state.about.displayMode = state.about.displayMode === "named" ? "named" : "anonymous";
       state.answers = Object.fromEntries(industry.questions.map((question) => {
         const answer = draft.answers?.[question.id];
@@ -573,6 +541,7 @@ async function initSurvey() {
   function getSteps() {
     return [
       { id: "about", label: "About" },
+      { id: "details", label: "Details" },
       { id: "questions", label: "Questions" },
       { id: "participation", label: "Participation" }
     ];
@@ -580,11 +549,13 @@ async function initSurvey() {
 
   function render() {
     const steps = getSteps();
+    const isAuthenticated = state.authStatus === "logged-in" && state.user && isSessionVerified(state.authProvider, state.user);
+    const completedSteps = isAuthenticated ? state.step : 0;
     progress.replaceChildren();
     steps.forEach((item, index) => {
       const button = el("button", `progress-step ${index === state.step ? "is-current" : ""} ${index < state.step ? "is-complete" : ""}`);
       button.type = "button";
-      button.disabled = index > state.step;
+      button.disabled = !isAuthenticated || index > state.step;
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
       button.addEventListener("click", () => {
         if (index <= state.step) {
@@ -597,13 +568,21 @@ async function initSurvey() {
       progress.append(button);
     });
     stepCount.textContent = `Step ${state.step + 1} of ${steps.length}`;
+    progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
+    progressMeter.setAttribute("aria-valuenow", String(completedSteps));
+    appBar.hidden = !isAuthenticated;
+    workspace.hidden = false;
+    workspace.classList.toggle("is-auth-gate", !isAuthenticated);
+    industryName.textContent = state.industry?.label || "Your survey";
+    industryDescriptor.textContent = state.industry?.descriptor || "Start with a little context, then share your perspective.";
     content.replaceChildren();
-    if (state.authStatus !== "logged-in" || !state.user || !isSessionVerified(state.authProvider, state.user)) {
+    if (!isAuthenticated) {
       renderAuthGate();
       return;
     }
     const step = steps[state.step];
     if (step.id === "about") renderAbout();
+    else if (step.id === "details") renderDetails();
     else if (step.id === "questions") renderQuestions();
     else renderConsent();
   }
@@ -612,20 +591,17 @@ async function initSurvey() {
     const wrapper = el("div", "auth-card");
     const isWaitingForCode = state.authStep === "code";
     const isEmail = state.authMode === "email";
-    wrapper.append(el("span", "section-kicker", "Private participant account"));
     const title = state.user
-      ? "One last step: verify your email."
+      ? "Verify your email to continue."
       : isWaitingForCode
-        ? `Enter the code from your ${isEmail ? "email" : "phone"}.`
-        : isEmail ? "Continue with your email." : "Join with your phone.";
+        ? `Enter your ${isEmail ? "email" : "phone"} code.`
+        : "Log in to share your voice.";
     wrapper.append(el("h2", null, title));
     const intro = state.user
       ? "We sent a verification link to your inbox. Verify it, then return here to continue your response."
       : isWaitingForCode
-        ? `We sent a one-time code to ${isEmail ? state.pendingEmail : state.pendingPhone}. No password or account setup is needed.`
-        : isEmail
-          ? "Enter your email and we will send a one-time code. Your email stays private and never appears on the wall."
-          : "Use your phone to create or access a private participant account. Your number is never shown on the wall.";
+        ? `We sent a one-time code to ${isEmail ? state.pendingEmail : state.pendingPhone}.`
+        : "Use your email or phone to continue. No password is needed, and your contact details stay private.";
     wrapper.append(el("p", "section-lede", intro));
     const card = el("div", "form-card");
     if (state.user) {
@@ -837,21 +813,13 @@ async function initSurvey() {
   }
 
   function renderAbout() {
-    content.append(el("span", "section-kicker", "01 / Your context"));
-    content.append(el("h2", null, "A little about where you are coming from."));
-    content.append(el("p", "section-lede", "These details help us understand the shape of the conversation. Your email or phone number is managed privately and is never stored with your public voice."));
+    content.append(el("span", "section-kicker", "01 / About"));
+    content.append(el("h2", null, "How should we name you?"));
+    content.append(el("p", "section-lede", "Choose how your perspective should appear on the Voices Wall. Your verified contact information stays private."));
     const card = el("div", "form-card");
-    const title = el("h3", null, "About you");
-    const intro = el("p", "card-intro", `You are joining the ${state.industry.label} room.`);
-    card.append(title, intro);
+    card.append(el("h3", null, "Your name on the wall"));
+    card.append(el("p", "card-intro", "You can stay anonymous or choose the name people should see."));
     const grid = el("div", "field-grid");
-    const privateIdentity = el("div", "field full");
-    const privateIdentityLabel = el("label", null, state.authProvider === "better" ? "Verified phone (private)" : "Verified email (private)");
-    const privateIdentityInput = document.createElement("input");
-    privateIdentityInput.value = state.authProvider === "better" ? state.user.phoneNumber || "" : state.user.email || "";
-    privateIdentityInput.disabled = true;
-    privateIdentity.append(privateIdentityLabel, privateIdentityInput);
-    grid.append(privateIdentity);
     const displayMode = el("fieldset", "field full");
     displayMode.append(el("legend", null, "How should your voice be named on the wall?"));
     const displayChoices = el("div", "choice-grid");
@@ -876,30 +844,93 @@ async function initSurvey() {
     });
     displayMode.append(displayChoices);
     grid.append(displayMode);
-    if (state.about.displayMode === "named") grid.append(textFieldFromState("What should we call you on the wall?", "displayName", "displayName", state.about.displayName, false, "Your name or a name you choose"));
-    const roleField = el("div", "field");
-    const roleLabel = document.createElement("label");
-    roleLabel.htmlFor = "role";
-    roleLabel.textContent = "Which role is closest to yours?";
-    const role = document.createElement("select");
-    role.id = "role";
-    role.name = "role";
-    role.required = true;
-    role.append(el("option", null, "Choose a role"));
-    role.options[0].value = "";
-    state.industry.roles.forEach((roleName) => role.append(el("option", null, roleName)));
-    role.value = state.about.role;
-    role.addEventListener("change", () => {
-      state.about.role = role.value;
-      saveDraft();
+    if (state.about.displayMode === "named") {
+      grid.append(textFieldFromState("What should we call you on the wall?", "displayName", "displayName", state.about.displayName, true, "Your name or a name you choose"));
+    }
+    card.append(grid);
+    appendFormActions(card);
+    content.append(card);
+  }
+
+  function renderDetails() {
+    content.append(el("span", "section-kicker", "02 / Details"));
+    content.append(el("h2", null, "Place your perspective."));
+    content.append(el("p", "section-lede", "Tell us which room, roles, and places shape what you are noticing."));
+    const card = el("div", "form-card");
+    card.append(el("h3", null, "Your context"));
+    card.append(el("p", "card-intro", "Choose the industry that feels closest to your experience."));
+    const grid = el("div", "field-grid");
+    const industryField = el("fieldset", "field full industry-field");
+    industryField.append(el("legend", null, "Where do you want to begin?"));
+    const industryChoices = el("div", "choice-grid");
+    catalog.industries.forEach((industry) => {
+      const wrapper = el("div", "choice");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "industry";
+      input.id = `industry-${industry.id}`;
+      input.value = industry.id;
+      input.checked = state.industry?.id === industry.id;
+      input.disabled = industry.status !== "open";
+      const label = document.createElement("label");
+      label.htmlFor = input.id;
+      label.append(el("strong", null, industry.label));
+      label.append(el("span", "industry-description", industry.status === "open" ? industry.descriptor : "Open later"));
+      wrapper.append(input, label);
+      input.addEventListener("change", () => selectIndustry(industry.id));
+      industryChoices.append(wrapper);
     });
-    roleField.append(roleLabel, role);
+    industryField.append(industryChoices);
+    grid.append(industryField);
+
+    const roleField = el("fieldset", "field full role-field");
+    roleField.append(el("legend", null, "Which roles are part of your perspective? Select all that apply."));
+    const roleChoices = el("div", "choice-grid");
+    if (state.industry) {
+      state.industry.roles.forEach((roleName, index) => {
+        const wrapper = el("div", "choice");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = "roles";
+        input.id = `role-${index}`;
+        input.value = roleName;
+        input.checked = state.about.roles.includes(roleName);
+        const label = document.createElement("label");
+        label.htmlFor = input.id;
+        label.textContent = roleName;
+        wrapper.append(input, label);
+        input.addEventListener("change", () => {
+          state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
+          state.errors = "";
+          saveDraft();
+        });
+        roleChoices.append(wrapper);
+      });
+    } else {
+      roleChoices.append(el("p", "field-note", "Choose an industry to see the roles in that room."));
+    }
+    roleField.append(roleChoices);
     grid.append(roleField);
-    catalog.aboutFields.forEach((fieldDefinition) => grid.append(textFieldFromState(fieldDefinition.label, fieldDefinition.id, fieldDefinition.id, state.about[fieldDefinition.id], fieldDefinition.required, fieldDefinition.placeholder)));
+    grid.append(occupationFieldFromState());
     grid.append(locationFieldFromState("Where are you joining from?", "city", state.about.city));
     card.append(grid);
     appendFormActions(card);
     content.append(card);
+  }
+
+  function selectIndustry(industryId) {
+    const industry = catalog.industries.find((item) => item.id === industryId && item.status === "open");
+    if (!industry) return;
+    const changed = state.industry?.id !== industry.id;
+    state.industry = industry;
+    state.about.roles = state.about.roles.filter((roleName) => industry.roles.includes(roleName));
+    if (changed) {
+      state.answers = {};
+      state.openQuestions = {};
+    }
+    state.errors = "";
+    saveDraft();
+    render();
   }
 
   function textFieldFromState(label, id, stateKey, value, required, placeholder = "") {
@@ -919,6 +950,89 @@ async function initSurvey() {
       saveDraft();
     });
     field.append(labelNode, input);
+    return field;
+  }
+
+  function occupationFieldFromState() {
+    const field = el("div", "field location-field occupation-field");
+    const labelNode = document.createElement("label");
+    labelNode.htmlFor = "occupation";
+    labelNode.textContent = "What is your occupation?";
+    const input = document.createElement("input");
+    input.id = "occupation";
+    input.name = "occupation";
+    input.type = "search";
+    input.placeholder = "Search occupations or choose Other";
+    input.value = state.about.occupationQuery || state.about.occupation || "";
+    input.required = true;
+    input.autocomplete = "off";
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "occupation-results");
+    const status = el("small", "location-status", state.about.occupationMode === "other" ? "Using a write-in occupation." : "Start typing to search the list.");
+    const results = el("div", "location-results occupation-results");
+    results.id = "occupation-results";
+    results.setAttribute("role", "listbox");
+    results.hidden = true;
+    const options = catalog.occupationOptions || [];
+
+    const chooseOccupation = (value, mode) => {
+      state.about.occupation = value;
+      state.about.occupationQuery = value;
+      state.about.occupationMode = mode;
+      input.value = value;
+      input.dataset.selected = "true";
+      status.textContent = mode === "other" ? "Using a write-in occupation." : "Occupation selected.";
+      results.replaceChildren();
+      results.hidden = true;
+      state.errors = "";
+      saveDraft();
+    };
+
+    const showResults = () => {
+      const query = input.value.trim();
+      const normalizedQuery = query.toLowerCase();
+      const matches = options.filter((option) => option.toLowerCase().includes(normalizedQuery)).slice(0, 8);
+      results.replaceChildren();
+      matches.forEach((optionLabel) => {
+        const option = el("button", "location-result", optionLabel);
+        option.type = "button";
+        option.setAttribute("role", "option");
+        option.addEventListener("mousedown", (event) => event.preventDefault());
+        option.addEventListener("click", () => chooseOccupation(optionLabel, "catalog"));
+        results.append(option);
+      });
+      if (query && !options.some((option) => option.toLowerCase() === normalizedQuery)) {
+        const other = el("button", "location-result occupation-other-result", `Use “${query}” as Other`);
+        other.type = "button";
+        other.setAttribute("role", "option");
+        other.addEventListener("mousedown", (event) => event.preventDefault());
+        other.addEventListener("click", () => chooseOccupation(query, "other"));
+        results.append(other);
+      }
+      if (!results.children.length) {
+        results.append(el("small", "location-empty", "Start typing to search the list."));
+      }
+      results.hidden = false;
+    };
+
+    input.addEventListener("input", () => {
+      const query = input.value.trim();
+      const exact = options.find((option) => option.toLowerCase() === query.toLowerCase());
+      state.about.occupationQuery = query;
+      state.about.occupation = exact || query;
+      state.about.occupationMode = exact ? "catalog" : query ? "other" : "";
+      input.dataset.selected = exact ? "true" : "false";
+      state.errors = "";
+      saveDraft();
+      showResults();
+    });
+    input.addEventListener("focus", () => {
+      showResults();
+    });
+    input.addEventListener("blur", () => {
+      window.setTimeout(() => { results.hidden = true; }, 150);
+    });
+    field.append(labelNode, input, status, results);
     return field;
   }
 
@@ -1022,7 +1136,7 @@ async function initSurvey() {
   }
 
   function renderQuestions() {
-    content.append(el("span", "section-kicker", "02 / Three prompts"));
+    content.append(el("span", "section-kicker", "03 / Three prompts"));
     content.append(el("h2", null, "Tell us what you are noticing."));
     content.append(el("p", "section-lede", "Open each prompt in the order that feels right. Choose a quick starting point, then leave a voice note or write instead."));
     const list = el("div", "question-list");
@@ -1129,7 +1243,7 @@ async function initSurvey() {
   }
 
   function renderConsent() {
-    content.append(el("span", "section-kicker", "03 / Participation"));
+    content.append(el("span", "section-kicker", "04 / Participation"));
     content.append(el("h2", null, "Participation"));
     content.append(el("p", "section-lede", "Choose how you would like to stay connected. Publishing your response is included with submission."));
     const card = el("div", "form-card");
@@ -1187,17 +1301,25 @@ async function initSurvey() {
     const step = getSteps()[state.step];
     if (!step) return;
     if (step.id === "about") {
-      const role = document.querySelector("#role");
-      state.about.role = role?.value || state.about.role;
-      ["displayName", "occupation"].forEach((key) => {
-        const input = document.querySelector(`#${key}`);
-        if (input) state.about[key] = input.value.trim();
-      });
+      const displayName = document.querySelector("#displayName");
+      if (displayName) state.about.displayName = displayName.value.trim();
+      saveDraft();
+    } else if (step.id === "details") {
+      state.about.roles = Array.from(document.querySelectorAll('[name="roles"]:checked'), (input) => input.value);
+      const occupation = document.querySelector("#occupation");
+      if (occupation) {
+        state.about.occupationQuery = occupation.value.trim();
+        if (occupation.dataset.selected !== "true") {
+          state.about.occupation = occupation.value.trim();
+          state.about.occupationMode = state.about.occupation ? "other" : "";
+        }
+      }
       const locationInput = document.querySelector("#city");
       if (locationInput) {
         state.about.locationQuery = locationInput.value.trim();
         if (locationInput.dataset.selected !== "true") state.about.city = "";
       }
+      saveDraft();
     } else if (step.id === "questions") {
       state.industry.questions.forEach((question) => {
         const selected = document.querySelector(`[name="${question.id}-choice"]:checked`);
@@ -1219,8 +1341,11 @@ async function initSurvey() {
   function validateCurrentStep() {
     const step = getSteps()[state.step];
     if (step.id === "about") {
-      if (!state.about.role) return "Choose the role that feels closest to yours.";
-      if (!state.about.occupation) return "Add your occupation so we can place your perspective in context.";
+      if (state.about.displayMode === "named" && !state.about.displayName) return "Add the name you would like to use on the wall, or choose anonymous.";
+    } else if (step.id === "details") {
+      if (!state.industry) return "Choose an industry to continue.";
+      if (!state.about.roles.length) return "Select at least one role that is part of your perspective.";
+      if (!state.about.occupation) return "Choose an occupation or use a write-in occupation.";
       if (!state.about.city) return "Choose a location from the worldwide search results so we can place your perspective in context.";
     } else if (step.id === "questions") {
       if (!Object.values(completedAnswers()).length) return "Complete at least one prompt with a starting point and a voice note or written response.";
@@ -1253,7 +1378,7 @@ async function initSurvey() {
     try {
       const responseData = {
         industry: state.industry.label,
-        role: state.about.role,
+        role: state.about.roles.join(", "),
         occupation: state.about.occupation,
         city: state.about.city,
         displayName: state.about.displayMode === "named" ? state.about.displayName : null,
@@ -1311,6 +1436,8 @@ async function initSurvey() {
     card.append(actions);
     wrapper.append(card);
     content.append(wrapper);
+    progressBar.style.width = "100%";
+    progressMeter.setAttribute("aria-valuenow", String(getSteps().length));
     stepCount.textContent = "Response saved";
   }
 
