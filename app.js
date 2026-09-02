@@ -1036,7 +1036,7 @@ async function initSurvey() {
       let waveform;
       if (isRecording || answer.audioData) {
         waveform = document.createElement("canvas");
-        waveform.className = `voice-waveform ${isRecording ? "live-waveform" : "playback-waveform"}`;
+        waveform.className = "voice-waveform live-waveform";
         waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
         waveform.height = 64;
         waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
@@ -1566,7 +1566,7 @@ async function initWall() {
     const duration = el("span", "voice-duration", formatDuration(voice.duration_seconds));
     if (audioAvailable) {
       const waveform = document.createElement("canvas");
-      waveform.className = "voice-waveform wall-waveform";
+      waveform.className = "voice-waveform live-waveform wall-waveform";
       waveform.height = 56;
       waveform.setAttribute("aria-label", "Voice recording waveform");
       drawWaveform(waveform, waveformPlaceholder);
