@@ -99,6 +99,13 @@ a { color: inherit; text-decoration: none; }
 .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--coral); box-shadow: 0 2px 0 var(--coral); }
 .field input:disabled { color: var(--soft); opacity: 1; }
 .field small { color: var(--soft); font-size: 12px; line-height: 1.4; }
+.location-field { position: relative; }
+.location-status { display: block; min-height: 18px; }
+.location-results { display: grid; gap: 4px; margin-top: -2px; padding: 6px; border: 1.5px solid var(--ink); background: var(--cream); }
+.location-results[hidden] { display: none; }
+.location-result { width: 100%; border: 0; background: transparent; padding: 9px 10px; color: var(--ink); cursor: pointer; font: inherit; font-size: 14px; text-align: left; }
+.location-result:hover, .location-result:focus-visible { background: var(--yellow); outline: 0; }
+.location-empty { display: block; padding: 7px 10px; }
 .consent-row { display: flex; gap: 10px; align-items: flex-start; color: var(--soft); font-size: 14px; line-height: 1.45; cursor: pointer; }
 .consent-row input { width: 18px; min-width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--ink); }
 .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
@@ -127,6 +134,7 @@ a { color: inherit; text-decoration: none; }
 .form-actions .back-btn { border: 0; background: transparent; padding: 10px 0; text-decoration: underline; cursor: pointer; font: inherit; }
 .form-actions .next-btn { margin-left: auto; }
 .validation-message { margin-top: 14px; color: #9c2d16; font-size: 13px; }
+.submission-consent { margin-top: 16px; color: var(--soft); font-size: 13px; line-height: 1.45; }
 
 .auth-card { max-width: 470px; margin: 0 auto; }
 .auth-card h2 { max-width: none; font-size: clamp(2.2rem, 5vw, 3.4rem); }

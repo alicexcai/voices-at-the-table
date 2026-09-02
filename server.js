@@ -50,7 +50,7 @@ function validateSubmission(body) {
   if (!body || !isString(body.industry, 100) || !isString(body.role, 100) || !isString(body.occupation, 200) || !isString(body.city, 200)) {
     throw new Error("Some required response fields are missing.");
   }
-  if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers) || Object.keys(body.answers).length !== 3) {
+  if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers) || Object.keys(body.answers).length < 1 || Object.keys(body.answers).length > 3) {
     throw new Error("The survey answers are invalid.");
   }
   for (const answer of Object.values(body.answers)) {

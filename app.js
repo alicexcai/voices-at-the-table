@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@neondatabase/neon-js@0.6.2-beta";
+import { OpenStreetMapProvider } from "https://esm.sh/leaflet-geosearch@4.4.0";
 
 const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.aws.neon.tech/neondb/auth";
 const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
@@ -96,13 +97,13 @@ async function initSurvey() {
       displayName: "",
       role: "",
       occupation: "",
-      city: ""
+      city: "",
+      locationQuery: ""
     },
     answers: {},
     openQuestions: {},
     consent: {
       roundtableInterest: false,
-      publishToWall: false,
       useVoiceInRoundtable: false,
       contactMe: false
     },
@@ -148,8 +149,8 @@ async function initSurvey() {
     state.step = 0;
     state.errors = "";
     state.answers = {};
-    state.openQuestions = { [state.industry.questions[0]?.id]: true };
-    state.consent = { roundtableInterest: false, publishToWall: false, useVoiceInRoundtable: false, contactMe: false };
+    state.openQuestions = {};
+    state.consent = { roundtableInterest: false, useVoiceInRoundtable: false, contactMe: false };
     picker.hidden = true;
     workspace.hidden = false;
     industryName.textContent = state.industry.label;
@@ -182,7 +183,6 @@ async function initSurvey() {
   }
 
   function render() {
-    if (state.industry && content.children.length) syncCurrentStep();
     const steps = getSteps();
     progress.replaceChildren();
     steps.forEach((item, index) => {
@@ -192,6 +192,7 @@ async function initSurvey() {
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
       button.addEventListener("click", () => {
         if (index <= state.step) {
+          syncCurrentStep();
           state.step = index;
           state.errors = "";
           render();
@@ -371,6 +372,36 @@ async function initSurvey() {
     render();
   }
 
+  const locationProvider = new OpenStreetMapProvider();
+  let locationSearchTimer;
+  let locationSearchRequest = 0;
+
+  function isQuestionComplete(answer) {
+    return Boolean(answer?.choice && (answer.text?.trim() || answer.audioData));
+  }
+
+  function saveQuestionAnswer(questionId, updates) {
+    const answer = {
+      choice: "",
+      text: "",
+      audioData: "",
+      audioMimeType: "",
+      durationSeconds: null,
+      ...state.answers[questionId],
+      ...updates
+    };
+    state.answers[questionId] = answer;
+    if (isQuestionComplete(answer)) sessionStatus.textContent = "Completed responses are saved for this session.";
+  }
+
+  function completedAnswers() {
+    return Object.fromEntries(
+      state.industry.questions
+        .map((question) => [question.id, state.answers[question.id]])
+        .filter(([, answer]) => isQuestionComplete(answer))
+    );
+  }
+
   function renderAbout() {
     content.append(el("span", "section-kicker", "01 / Your context"));
     content.append(el("h2", null, "A little about where you are coming from."));
@@ -423,6 +454,9 @@ async function initSurvey() {
     role.options[0].value = "";
     state.industry.roles.forEach((roleName) => role.append(el("option", null, roleName)));
     role.value = state.about.role;
+    role.addEventListener("change", () => {
+      state.about.role = role.value;
+    });
     roleField.append(roleLabel, role);
     grid.append(roleField);
     catalog.aboutFields.forEach((fieldDefinition) => grid.append(textFieldFromState(fieldDefinition.label, fieldDefinition.id, fieldDefinition.id, state.about[fieldDefinition.id], fieldDefinition.required, fieldDefinition.placeholder)));
@@ -444,12 +478,15 @@ async function initSurvey() {
     input.placeholder = placeholder;
     input.value = value || "";
     input.required = required;
+    input.addEventListener("input", () => {
+      state.about[stateKey] = input.value.trim();
+    });
     field.append(labelNode, input);
     return field;
   }
 
   function locationFieldFromState(label, id, value) {
-    const field = el("div", "field");
+    const field = el("div", "field location-field");
     const labelNode = document.createElement("label");
     labelNode.htmlFor = id;
     labelNode.textContent = label;
@@ -457,15 +494,91 @@ async function initSurvey() {
     input.id = id;
     input.name = id;
     input.type = "search";
-    input.placeholder = "Search city or region";
-    input.value = value || "";
+    input.placeholder = "Search any city, region, or country";
+    input.value = state.about.locationQuery || value || "";
     input.required = true;
     input.autocomplete = "address-level2";
-    input.setAttribute("list", "location-options");
-    const list = document.createElement("datalist");
-    list.id = "location-options";
-    catalog.locationOptions.forEach((location) => list.append(el("option", null, location)));
-    field.append(labelNode, input, list);
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "location-results");
+    input.dataset.selected = value ? "true" : "false";
+    const status = el("small", "location-status", value ? "Location selected." : "Start typing to search the world.");
+    const results = el("div", "location-results");
+    results.id = "location-results";
+    results.setAttribute("role", "listbox");
+    results.hidden = true;
+
+    const showResults = (items) => {
+      results.replaceChildren();
+      if (!items.length) {
+        results.append(el("small", "location-empty", "No matching locations found."));
+        results.hidden = false;
+        return;
+      }
+      items.forEach((item) => {
+        const option = el("button", "location-result", item.label);
+        option.type = "button";
+        option.setAttribute("role", "option");
+        option.addEventListener("mousedown", (event) => event.preventDefault());
+        option.addEventListener("click", () => {
+          state.about.city = item.label;
+          state.about.locationQuery = item.label;
+          input.value = item.label;
+          input.dataset.selected = "true";
+          status.textContent = "Location selected.";
+          results.replaceChildren();
+          results.hidden = true;
+          state.errors = "";
+          sessionStatus.textContent = "Your location is saved for this session.";
+        });
+        results.append(option);
+      });
+      results.hidden = false;
+    };
+
+    input.addEventListener("input", () => {
+      const query = input.value.trim();
+      state.about.locationQuery = query;
+      state.about.city = "";
+      input.dataset.selected = "false";
+      state.errors = "";
+      window.clearTimeout(locationSearchTimer);
+      locationSearchRequest += 1;
+      const requestId = locationSearchRequest;
+      if (query.length < 2) {
+        results.replaceChildren();
+        results.hidden = true;
+        status.textContent = "Start typing to search the world.";
+        return;
+      }
+      status.textContent = "Searching worldwide…";
+      locationSearchTimer = window.setTimeout(async () => {
+        try {
+          const matches = await locationProvider.search({ query });
+          if (requestId !== locationSearchRequest) return;
+          const seen = new Set();
+          const items = matches.filter((match) => {
+            if (!match.label || seen.has(match.label)) return false;
+            seen.add(match.label);
+            return true;
+          }).slice(0, 8);
+          showResults(items);
+          status.textContent = items.length ? "Choose the closest match." : "No matching locations found.";
+        } catch {
+          if (requestId !== locationSearchRequest) return;
+          results.replaceChildren();
+          results.hidden = true;
+          status.textContent = "Location search is unavailable right now. Try again in a moment.";
+        }
+      }, 300);
+    });
+
+    input.addEventListener("focus", () => {
+      if (results.children.length) results.hidden = false;
+    });
+    input.addEventListener("blur", () => {
+      window.setTimeout(() => { results.hidden = true; }, 150);
+    });
+    field.append(labelNode, input, status, results);
     return field;
   }
 
@@ -508,8 +621,7 @@ async function initSurvey() {
         label.textContent = option;
         wrapper.append(input, label);
         input.addEventListener("change", () => {
-          answer.choice = option;
-          state.answers[question.id] = answer;
+          saveQuestionAnswer(question.id, { choice: option });
         });
         choices.append(wrapper);
       });
@@ -552,6 +664,9 @@ async function initSurvey() {
       text.name = `${question.id}-text`;
       text.placeholder = question.placeholder || "Write what comes to mind.";
       text.value = answer.text || "";
+      text.addEventListener("input", () => {
+        saveQuestionAnswer(question.id, { text: text.value.trim() });
+      });
       textField.append(textLabel, text);
       panel.append(textField);
       card.append(panel);
@@ -564,7 +679,7 @@ async function initSurvey() {
   function renderConsent() {
     content.append(el("span", "section-kicker", "03 / Participation"));
     content.append(el("h2", null, "Participation"));
-    content.append(el("p", "section-lede", "You can change your mind later. Publishing and roundtable permissions are separate choices."));
+    content.append(el("p", "section-lede", "Choose how you would like to stay connected. Publishing your response is included with submission."));
     const card = el("div", "form-card");
     card.append(el("h3", null, "Roundtable + consent"));
     const list = el("div", "field-grid");
@@ -583,6 +698,7 @@ async function initSurvey() {
     });
     card.append(list);
     appendFormActions(card);
+    card.append(el("p", "submission-consent", "By submitting, I give permission for my written response and voice note to appear on the Voices Wall"));
     content.append(card);
   }
 
@@ -608,20 +724,23 @@ async function initSurvey() {
     if (step.id === "about") {
       const role = document.querySelector("#role");
       state.about.role = role?.value || state.about.role;
-      ["displayName", "occupation", "city"].forEach((key) => {
+      ["displayName", "occupation"].forEach((key) => {
         const input = document.querySelector(`#${key}`);
         if (input) state.about[key] = input.value.trim();
       });
+      const locationInput = document.querySelector("#city");
+      if (locationInput) {
+        state.about.locationQuery = locationInput.value.trim();
+        if (locationInput.dataset.selected !== "true") state.about.city = "";
+      }
     } else if (step.id === "questions") {
       state.industry.questions.forEach((question) => {
-        const current = state.answers[question.id] || {};
         const selected = document.querySelector(`[name="${question.id}-choice"]:checked`);
         const text = document.querySelector(`#${question.id}-text`);
-        state.answers[question.id] = {
-          ...current,
+        saveQuestionAnswer(question.id, {
           choice: selected?.value || "",
           text: text ? text.value.trim() : ""
-        };
+        });
       });
     } else {
       catalog.consent.forEach((consent) => {
@@ -636,15 +755,9 @@ async function initSurvey() {
     if (step.id === "about") {
       if (!state.about.role) return "Choose the role that feels closest to yours.";
       if (!state.about.occupation) return "Add your occupation so we can place your perspective in context.";
-      if (!catalog.locationOptions.includes(state.about.city)) return "Choose a location from the list so we can place your perspective in context.";
+      if (!state.about.city) return "Choose a location from the worldwide search results so we can place your perspective in context.";
     } else if (step.id === "questions") {
-      const incomplete = state.industry.questions.some((question) => {
-        const answer = state.answers[question.id] || {};
-        return !answer.choice || (!answer.text && !answer.audioData);
-      });
-      if (incomplete) return "Respond to all three prompts with a starting point and a voice note or written response.";
-    } else if (!state.consent.publishToWall) {
-      return "Choose whether you give permission for your response to appear on the Voices Wall.";
+      if (!Object.values(completedAnswers()).length) return "Complete at least one prompt with a starting point and a voice note or written response.";
     }
     return "";
   }
@@ -679,9 +792,9 @@ async function initSurvey() {
         city: state.about.city,
         displayName: state.about.displayMode === "named" ? state.about.displayName : null,
         isAnonymous: state.about.displayMode !== "named",
-        answers: state.answers,
+        answers: completedAnswers(),
         roundtableInterest: state.consent.roundtableInterest,
-        publishToWall: state.consent.publishToWall,
+        publishToWall: true,
         useVoiceInRoundtable: state.consent.useVoiceInRoundtable,
         contactMe: state.consent.contactMe
       };
@@ -720,7 +833,7 @@ async function initSurvey() {
     const wrapper = el("div", "auth-card");
     wrapper.append(el("span", "section-kicker", "Thank you for adding your voice"));
     wrapper.append(el("h2", null, "The table is a little wider now."));
-    wrapper.append(el("p", "section-lede", state.consent.publishToWall ? "Your perspective is ready for the Voices Wall. It may take a moment to appear as the wall refreshes." : "Your perspective has been saved privately. Thank you for helping us understand the room."));
+    wrapper.append(el("p", "section-lede", "Your perspective is ready for the Voices Wall. It may take a moment to appear as the wall refreshes."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
     const wall = el("a", "btn primary", "Visit the Voices Wall");
@@ -735,53 +848,90 @@ async function initSurvey() {
   }
 
   async function startRecording(questionId) {
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    if (!window.isSecureContext) {
+      state.errors = "Voice recording needs a secure browser connection. You can still submit a written response.";
+      render();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       state.errors = "Voice recording is not supported in this browser. You can still submit a written response.";
       render();
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const chunks = [];
+      const startedAt = Date.now();
+      let finished = false;
       state.recordingStream = stream;
       state.recordingQuestionId = questionId;
-      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-      state.recordingChunks = [];
-      state.recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      state.recordingStartedAt = Date.now();
-      state.recorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) state.recordingChunks.push(event.data);
+      state.recordingChunks = chunks;
+      state.recorder = recorder;
+      state.recordingStartedAt = startedAt;
+
+      const cleanup = () => {
+        if (state.recorder === recorder) state.recorder = null;
+        state.recordingQuestionId = null;
+        state.recordingChunks = [];
+        state.recordingStartedAt = null;
+        state.recordingStream = null;
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
       });
-      state.recorder.addEventListener("stop", () => {
-        const blob = new Blob(state.recordingChunks, { type: state.recorder.mimeType || "audio/webm" });
+      recorder.addEventListener("error", () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        state.errors = "The recording could not be completed. Check your microphone and try again, or submit a written response.";
+        render();
+      });
+      recorder.addEventListener("stop", () => {
+        if (finished) return;
+        finished = true;
+        const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        cleanup();
+        if (!blob.size) {
+          state.errors = "No audio was captured. Check your microphone and try again, or submit a written response.";
+          render();
+          return;
+        }
         const reader = new FileReader();
         reader.addEventListener("loadend", () => {
-          const answer = state.answers[questionId] || { choice: "", text: "" };
-          state.answers[questionId] = {
-            ...answer,
+          saveQuestionAnswer(questionId, {
             audioData: reader.result,
             audioMimeType: blob.type,
-            durationSeconds: Math.max(1, Math.round((Date.now() - state.recordingStartedAt) / 1000))
-          };
-          state.recorder = null;
-          state.recordingQuestionId = null;
-          state.recordingChunks = [];
-          state.recordingStartedAt = null;
-          state.recordingStream = null;
+            durationSeconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+          });
           state.errors = "";
           render();
         });
         reader.readAsDataURL(blob);
-        stream.getTracks().forEach((track) => track.stop());
       });
-      state.recorder.start();
+      recorder.start(1000);
       state.recordingTimer = window.setTimeout(() => stopRecording(), MAX_RECORDING_SECONDS * 1000);
+      state.errors = "";
       render();
-    } catch {
+    } catch (error) {
       state.recordingStream?.getTracks().forEach((track) => track.stop());
       state.recordingStream = null;
       state.recordingQuestionId = null;
       state.recorder = null;
-      state.errors = "Microphone access was not granted. You can still submit a written response.";
+      state.errors = error?.name === "NotFoundError"
+        ? "No microphone was found. Connect a microphone or submit a written response."
+        : error?.name === "NotAllowedError" || error?.name === "SecurityError"
+          ? "Allow microphone access in your browser, then try again. You can still submit a written response."
+          : "The microphone could not be started. Check your microphone and try again, or submit a written response.";
       render();
     }
   }

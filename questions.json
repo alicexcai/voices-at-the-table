@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "aboutFields": [
     {
       "id": "occupation",
@@ -8,31 +8,6 @@
       "placeholder": "For example, high school teacher",
       "required": true
     }
-  ],
-  "locationOptions": [
-    "New York, NY, United States",
-    "Boston, MA, United States",
-    "Chicago, IL, United States",
-    "Washington, DC, United States",
-    "Los Angeles, CA, United States",
-    "San Francisco, CA, United States",
-    "Seattle, WA, United States",
-    "Austin, TX, United States",
-    "Toronto, Ontario, Canada",
-    "Vancouver, British Columbia, Canada",
-    "Mexico City, Mexico",
-    "London, England, United Kingdom",
-    "Paris, France",
-    "Berlin, Germany",
-    "Amsterdam, Netherlands",
-    "Nairobi, Kenya",
-    "Cape Town, South Africa",
-    "São Paulo, Brazil",
-    "New Delhi, India",
-    "Singapore",
-    "Tokyo, Japan",
-    "Sydney, Australia",
-    "Other location"
   ],
   "questionOptions": {
     "relationship": [
@@ -60,11 +35,6 @@
       "id": "roundtableInterest",
       "label": "I would like to hear about future roundtable conversations.",
       "required": false
-    },
-    {
-      "id": "publishToWall",
-      "label": "I give permission for my written response and voice note to appear on the Voices Wall.",
-      "required": true
     },
     {
       "id": "useVoiceInRoundtable",
