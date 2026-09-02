@@ -503,6 +503,32 @@ async function initSurvey() {
       switcher.append(switchButton);
       card.append(switcher);
       if (isWaitingForCode) {
+        const resendLine = el("p", "auth-switch");
+        const resendButton = el("button", "text-button", "Send a new code");
+        resendButton.type = "button";
+        resendButton.addEventListener("click", async () => {
+          resendButton.disabled = true;
+          try {
+            if (isEmail) {
+              const result = await neonClient.auth.emailOtp.sendVerificationOtp({
+                email: state.pendingEmail,
+                type: "sign-in"
+              });
+              if (result.error) throw new Error(result.error.message || "We could not send a new email code.");
+            } else {
+              await postJson("/api/auth/phone-number/send-otp", {
+                phoneNumber: state.pendingPhone
+              });
+            }
+            state.authMessage = "A new code was sent. Use the most recent code.";
+          } catch (error) {
+            state.authMessage = error.message || "We could not send a new code.";
+          }
+          render();
+        });
+        resendLine.append(resendButton);
+        card.append(resendLine);
+
         const change = el("p", "auth-switch");
         const changeButton = el("button", "text-button", isEmail ? "Use a different address" : "Use a different number");
         changeButton.type = "button";
@@ -576,9 +602,12 @@ async function initSurvey() {
       }
       render();
     } catch (error) {
-      state.authMessage = error.message === "Request could not be completed." && state.authMode === "phone" && state.authStep === "request"
-        ? "Twilio needs an approved compliance profile before it can text an unverified number. For testing, add your number as a Verified Caller ID in Twilio."
-        : error.message || "Authentication failed. Please try again.";
+      const errorMessage = error.message || "Authentication failed. Please try again.";
+      state.authMessage = state.authStep === "code" && /invalid otp|otp expired|too many attempts/i.test(errorMessage)
+        ? "That code is invalid or expired. Use the most recent code, or send a new one."
+        : errorMessage === "Request could not be completed." && state.authMode === "phone" && state.authStep === "request"
+          ? "Twilio needs an approved compliance profile before it can text an unverified number. For testing, add your number as a Verified Caller ID in Twilio."
+          : errorMessage;
       render();
     }
   }
