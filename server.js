@@ -38,6 +38,28 @@ async function getAuthenticatedUser(req) {
   return session?.user || null;
 }
 
+async function handleSetPassword(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, JSON.stringify({ error: "Method not allowed." }));
+    return;
+  }
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    sendJson(res, 401, JSON.stringify({ error: "Sign in before setting a password." }));
+    return;
+  }
+  const body = await readJsonBody(req, 32 * 1024);
+  if (!isString(body?.newPassword, 128) || body.newPassword.length < 8) {
+    sendJson(res, 400, JSON.stringify({ error: "Use a password between 8 and 128 characters." }));
+    return;
+  }
+  await auth.api.setPassword({
+    body: { newPassword: body.newPassword },
+    headers: fromNodeHeaders(req.headers)
+  });
+  sendJson(res, 200, JSON.stringify({ ok: true }));
+}
+
 function isString(value, maxLength = 10000) {
   return typeof value === "string" && value.length <= maxLength;
 }
@@ -231,6 +253,10 @@ const authHandler = toNodeHandler(auth);
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   try {
+    if (pathname === "/api/auth/set-password") {
+      await handleSetPassword(req, res);
+      return;
+    }
     if (pathname.startsWith("/api/auth/")) {
       await authHandler(req, res);
       return;

@@ -6,6 +6,7 @@ const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.a
 const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
 const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
+const PASSWORD_MIN_LENGTH = 8;
 const DRAFT_STORAGE_PREFIX = "voices-at-the-table.survey-draft.v2";
 const NEON_SESSION_STORAGE_KEY = "voices-at-the-table.neon-session.v1";
 const AUTH_PROVIDER_STORAGE_KEY = "voices-at-the-table.auth-provider.v1";
@@ -406,6 +407,29 @@ async function putJson(url, body) {
   return payload;
 }
 
+function validatePasswordPair(password, confirmation) {
+  if (password.length < PASSWORD_MIN_LENGTH) return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
+  if (password !== confirmation) return "The passwords do not match.";
+  return "";
+}
+
+async function requestNeonPasswordSetup(email) {
+  const result = await neonClient.auth.requestPasswordReset({
+    email,
+    redirectTo: new URL("password.html", window.location.href).href
+  });
+  if (result?.error) throw new Error(result.error.message || "We could not send a password setup link.");
+}
+
+async function resetNeonPassword(token, newPassword) {
+  const result = await neonClient.auth.resetPassword({ token, newPassword });
+  if (result?.error) throw new Error(result.error.message || "We could not set your password.");
+}
+
+async function setBetterPassword(newPassword) {
+  return postJson("/api/auth/set-password", { newPassword });
+}
+
 async function loadCatalog() {
   const response = await fetch(DATA_URL);
   if (!response.ok) throw new Error("Question catalog could not be loaded.");
@@ -520,6 +544,10 @@ if (page === "profile") {
   initProfile();
 }
 
+if (page === "password") {
+  initPassword();
+}
+
 initSiteAuth();
 
 async function initSurvey() {
@@ -539,6 +567,7 @@ async function initSurvey() {
     step: 0,
     completedThrough: -1,
     authMode: "email",
+    emailAuthMethod: "otp",
     authStep: "request",
     authMessage: "",
     pendingEmail: "",
@@ -876,6 +905,11 @@ async function initSurvey() {
         grid.append(codeField);
       } else if (isEmail) {
         grid.append(textField("Email", "authEmail", "you@example.com", true, "email"));
+        if (state.emailAuthMethod === "password") {
+          const passwordField = textField("Password", "authPassword", "Your password", true, "password");
+          passwordField.querySelector("input").autocomplete = "current-password";
+          grid.append(passwordField);
+        }
       } else {
         const phoneField = textField("Phone number", "authPhone", "+1 555 123 4567", true, "tel");
         phoneField.querySelector("input").pattern = "\\+[1-9]\\d{1,14}";
@@ -883,19 +917,33 @@ async function initSurvey() {
         grid.append(el("small", "auth-code-note", "Use international format, for example +15551234567."));
       }
       const actions = el("div", "form-actions");
-      const submit = el("button", "btn primary next-btn", isWaitingForCode ? "Verify code" : isEmail ? "Email me a code" : "Text me a code");
+      const submit = el("button", "btn primary next-btn", isWaitingForCode ? "Verify code" : state.emailAuthMethod === "password" && isEmail ? "Sign in with password" : isEmail ? "Email me a code" : "Text me a code");
       submit.type = "submit";
       actions.append(submit);
       form.append(grid, actions);
       form.addEventListener("submit", handleAuth);
       card.append(form);
       if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
+      if (isEmail && !isWaitingForCode) {
+        const methodSwitcher = el("p", "auth-switch");
+        const methodButton = el("button", "text-button", state.emailAuthMethod === "password" ? "Use an email code instead" : "Use a password instead");
+        methodButton.type = "button";
+        methodButton.addEventListener("click", () => {
+          state.emailAuthMethod = state.emailAuthMethod === "password" ? "otp" : "password";
+          state.authStep = "request";
+          state.authMessage = "";
+          render();
+        });
+        methodSwitcher.append(methodButton);
+        card.append(methodSwitcher);
+      }
       const switcher = el("p", "auth-switch");
       switcher.append(document.createTextNode(isEmail ? "Prefer phone signup? " : "Prefer email? "));
       const switchButton = el("button", "text-button", isEmail ? "Use phone instead" : "Use email instead");
       switchButton.type = "button";
       switchButton.addEventListener("click", () => {
         state.authMode = isEmail ? "phone" : "email";
+        state.emailAuthMethod = "otp";
         state.authStep = "request";
         state.authMessage = "";
         render();
@@ -966,7 +1014,21 @@ async function initSurvey() {
     state.authMessage = "";
     try {
       if (state.authMode === "email") {
-        if (state.authStep === "request") {
+        if (state.emailAuthMethod === "password") {
+          const email = form.elements.authEmail.value.trim();
+          const result = await neonClient.auth.signIn.email({
+            email,
+            password: form.elements.authPassword.value
+          });
+          if (result.error) throw new Error(result.error.message || "That email or password was not accepted.");
+          persistNeonSession(result.data);
+          rememberAuthProvider("neon");
+          await refreshSession();
+          if (state.authStatus !== "logged-in" || !state.user) throw new Error("We could not establish your password session.");
+          restoreDraft();
+          await loadExistingSubmission();
+          saveDraft();
+        } else if (state.authStep === "request") {
           const email = form.elements.authEmail.value.trim();
           const result = await neonClient.auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
           if (result.error) throw new Error(result.error.message || "We could not send an email code.");
@@ -1875,9 +1937,161 @@ async function initSurvey() {
   render();
 }
 
+async function initPassword() {
+  const content = document.querySelector("#passwordContent");
+  if (!content) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token");
+  const errorCode = params.get("error");
+  const wrapper = el("div", "auth-card");
+  wrapper.append(el("span", "section-kicker", "Private account"));
+  wrapper.append(el("h1", null, "Set your password."));
+
+  if (errorCode || !token) {
+    wrapper.append(el("p", "section-lede", "This password setup link is missing or has expired. Request a new one from your profile."));
+    const link = el("a", "btn primary", "Return to profile");
+    link.href = "profile.html";
+    const actions = el("div", "voice-actions");
+    actions.append(link);
+    wrapper.append(actions);
+    content.append(wrapper);
+    return;
+  }
+
+  wrapper.append(el("p", "section-lede", "Choose a password with at least 8 characters. Your one-time code sign-in will continue to work."));
+  const card = el("div", "form-card");
+  const form = document.createElement("form");
+  const fields = el("div", "field-grid");
+  const passwordField = (label, id, placeholder) => {
+    const field = el("div", "field");
+    const labelNode = document.createElement("label");
+    labelNode.htmlFor = id;
+    labelNode.textContent = label;
+    const input = document.createElement("input");
+    input.id = id;
+    input.name = id;
+    input.type = "password";
+    input.placeholder = placeholder;
+    input.required = true;
+    input.autocomplete = "new-password";
+    field.append(labelNode, input);
+    return field;
+  };
+  fields.append(passwordField("New password", "newPassword", "At least 8 characters"), passwordField("Confirm password", "confirmPassword", "Repeat your password"));
+  const actions = el("div", "form-actions");
+  const submit = el("button", "btn primary", "Set password");
+  submit.type = "submit";
+  actions.append(submit);
+  const message = el("p", "auth-message");
+  form.append(fields, actions, message);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    message.textContent = "";
+    const error = validatePasswordPair(form.elements.newPassword.value, form.elements.confirmPassword.value);
+    if (error) {
+      message.textContent = error;
+      return;
+    }
+    submit.disabled = true;
+    try {
+      await resetNeonPassword(token, form.elements.newPassword.value);
+      wrapper.replaceChildren(
+        el("span", "section-kicker", "Password ready"),
+        el("h1", null, "You are all set."),
+        el("p", "section-lede", "Your password is ready. You can use it or an email code the next time you sign in."),
+        Object.assign(el("a", "btn primary"), { href: "survey.html", textContent: "Return to the survey" })
+      );
+    } catch (error) {
+      message.textContent = error.message || "We could not set your password yet.";
+      submit.disabled = false;
+    }
+  });
+  card.append(form);
+  wrapper.append(card);
+  content.append(wrapper);
+}
+
 async function initProfile() {
   const content = document.querySelector("#profileContent");
   if (!content) return;
+
+  const renderPasswordSettings = (session) => {
+    const card = el("div", "form-card profile-card");
+    card.append(el("h3", null, "Optional password"));
+    const message = el("p", "auth-message");
+    if (session.provider === "neon") {
+      card.append(el("p", "card-intro", "Keep using one-time codes, or request a secure email link to add a password for quicker sign-in later."));
+      const actions = el("div", "form-actions");
+      const submit = el("button", "btn primary", "Email me a setup link");
+      submit.type = "button";
+      submit.addEventListener("click", async () => {
+        submit.disabled = true;
+        message.textContent = "";
+        try {
+          await requestNeonPasswordSetup(session.user.email);
+          message.textContent = "A password setup link is on its way to your email.";
+        } catch (error) {
+          message.textContent = error.message || "We could not send a password setup link yet.";
+        } finally {
+          submit.disabled = false;
+        }
+      });
+      actions.append(submit);
+      card.append(actions, message);
+      return card;
+    }
+
+    card.append(el("p", "card-intro", "Keep using phone codes, or add a password for quicker sign-in later."));
+    const form = document.createElement("form");
+    form.className = "password-form";
+    const fields = el("div", "field-grid");
+    const passwordField = (label, id, placeholder) => {
+      const field = el("div", "field");
+      const labelNode = document.createElement("label");
+      labelNode.htmlFor = id;
+      labelNode.textContent = label;
+      const input = document.createElement("input");
+      input.id = id;
+      input.name = id;
+      input.type = "password";
+      input.placeholder = placeholder;
+      input.required = true;
+      field.append(labelNode, input);
+      return field;
+    };
+    const newPassword = passwordField("New password", "newPassword", "At least 8 characters");
+    newPassword.querySelector("input").autocomplete = "new-password";
+    const confirmation = passwordField("Confirm password", "confirmPassword", "Repeat your password");
+    confirmation.querySelector("input").autocomplete = "new-password";
+    fields.append(newPassword, confirmation);
+    const actions = el("div", "form-actions");
+    const submit = el("button", "btn primary", "Set password");
+    submit.type = "submit";
+    actions.append(submit);
+    form.append(fields, actions, message);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "";
+      const error = validatePasswordPair(form.elements.newPassword.value, form.elements.confirmPassword.value);
+      if (error) {
+        message.textContent = error;
+        return;
+      }
+      submit.disabled = true;
+      try {
+        await setBetterPassword(form.elements.newPassword.value);
+        form.reset();
+        message.textContent = "Your password is set. You can still use phone codes whenever you prefer.";
+      } catch (error) {
+        message.textContent = error.message || "We could not update your password yet.";
+      } finally {
+        submit.disabled = false;
+      }
+    });
+    card.append(form);
+    return card;
+  };
 
   const renderProfile = (session) => {
     content.replaceChildren();
@@ -1920,6 +2134,7 @@ async function initProfile() {
       logout.disabled = true;
       try {
         await signOutSession(session.provider);
+        clearRememberedAuthProvider();
         window.location.href = "survey.html";
       } catch (error) {
         logout.disabled = false;
@@ -1928,7 +2143,7 @@ async function initProfile() {
     });
     actions.append(surveyLink, logout);
     card.append(actions);
-    wrapper.append(card);
+    wrapper.append(card, renderPasswordSettings(session));
     content.append(wrapper);
   };
 

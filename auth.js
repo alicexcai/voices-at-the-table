@@ -21,7 +21,10 @@ export const auth = betterAuth({
     "http://localhost:3000",
     "http://127.0.0.1:3000"
   ],
-  emailAndPassword: { enabled: false },
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 8
+  },
   plugins: [
     phoneNumber({
       expiresIn: 300,
