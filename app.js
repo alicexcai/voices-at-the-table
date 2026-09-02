@@ -66,7 +66,7 @@ async function signOutSession(provider) {
 }
 
 async function submitNeonVoice(body) {
-  const sessionResult = await neonClient.auth.getSession({ forceFetch: true });
+  const sessionResult = await neonClient.auth.getSession();
   const session = sessionResult.data?.session;
   const token = session?.access_token || session?.token;
   if (!token) throw new Error("Your email session expired. Please sign in again.");
@@ -114,7 +114,7 @@ async function getSession() {
   }
 
   try {
-    const neonResult = await neonClient.auth.getSession({ forceFetch: true });
+    const neonResult = await neonClient.auth.getSession();
     const user = currentUserFrom(neonResult.data);
     const hasNeonSession = Boolean(neonResult.data?.session && user);
     return { status: hasNeonSession ? "logged-in" : "logged-out", provider: hasNeonSession ? "neon" : null, data: neonResult.data, user: hasNeonSession ? user : null, error: neonResult.error };
