@@ -1401,11 +1401,7 @@ async function initSurvey() {
             p_roundtable_interest: responseData.roundtableInterest,
             p_publish_to_wall: responseData.publishToWall,
             p_use_voice_in_roundtable: responseData.useVoiceInRoundtable,
-            p_contact_me: responseData.contactMe,
-            p_transcript: null,
-            p_audio_data: null,
-            p_audio_mime_type: null,
-            p_duration_seconds: null
+            p_contact_me: responseData.contactMe
           })
         : { data: await postJson("/api/submissions", responseData), error: null };
       if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
