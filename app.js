@@ -242,12 +242,17 @@ async function signOutSession(provider) {
   if (result?.error) throw new Error(result.error.message || "We could not sign you out.");
 }
 
-async function submitNeonVoice(body) {
+async function getNeonAccessToken() {
   const sessionResult = await neonClient.auth.getSession();
   const session = sessionResult.data?.session;
   const token = session?.access_token || session?.token;
   if (!token) throw new Error("Your email session expired. Please sign in again.");
-  const response = await fetch(`${NEON_DATA_API_URL}/rpc/submit_voice_submission`, {
+  return token;
+}
+
+async function callNeonRpc(name, body) {
+  const token = await getNeonAccessToken();
+  const response = await fetch(`${NEON_DATA_API_URL}/rpc/${name}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -257,12 +262,43 @@ async function submitNeonVoice(body) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.message || payload.error || "Your response could not be saved.");
-  return { data: Array.isArray(payload) ? payload[0] : payload, error: null };
+  return Array.isArray(payload) ? payload[0] : payload;
+}
+
+async function submitNeonVoice(body) {
+  return { data: await callNeonRpc("submit_voice_submission", body), error: null };
+}
+
+async function getNeonVoiceSubmission() {
+  return callNeonRpc("get_voice_submission", {});
+}
+
+async function updateNeonVoice(body) {
+  return { data: await callNeonRpc("update_voice_submission", body), error: null };
+}
+
+async function getJson(url) {
+  const response = await fetch(url, { credentials: "include", cache: "no-store" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || "Request could not be completed.");
+  return payload;
 }
 
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || "Request could not be completed.");
+  return payload;
+}
+
+async function putJson(url, body) {
+  const response = await fetch(url, {
+    method: "PUT",
     credentials: "include",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
@@ -382,6 +418,8 @@ async function initSurvey() {
     authStatus: "loading",
     errors: "",
     user: null,
+    submissionId: null,
+    editing: false,
     about: {
       displayMode: "anonymous",
       displayName: "",
@@ -413,7 +451,8 @@ async function initSurvey() {
   try {
     await loadCatalog();
     await refreshSession();
-    restoreDraft();
+    const restoredDraft = restoreDraft();
+    if (!restoredDraft && state.authStatus === "logged-in") await loadExistingSubmission();
     render();
   } catch (error) {
     content.textContent = error.message;
@@ -451,6 +490,8 @@ async function initSurvey() {
       version: 3,
       industryId: state.industry.id,
       step: state.step,
+      submissionId: state.submissionId,
+      editing: state.editing,
       about: state.about,
       answers: state.answers,
       openQuestions: state.openQuestions,
@@ -490,6 +531,8 @@ async function initSurvey() {
       const savedStep = Number.isInteger(draft.step) ? draft.step : 0;
       const migratedStep = draft.version >= 3 ? savedStep : savedStep === 1 ? 2 : savedStep === 2 ? 3 : savedStep;
       state.step = Math.max(0, Math.min(migratedStep, getSteps().length - 1));
+      state.submissionId = Number.isInteger(Number(draft.submissionId)) ? Number(draft.submissionId) : null;
+      state.editing = Boolean(draft.editing || state.submissionId);
       state.about = {
         ...state.about,
         ...(draft.about && typeof draft.about === "object" ? draft.about : {})
@@ -525,6 +568,54 @@ async function initSurvey() {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async function loadExistingSubmission() {
+    try {
+      const submission = state.authProvider === "neon"
+        ? await getNeonVoiceSubmission()
+        : await getJson("/api/submissions");
+      if (!submission?.submission_id) return false;
+      const industry = catalog.industries.find((item) => item.label === submission.industry || item.id === submission.industry);
+      if (!industry) return false;
+      state.industry = industry;
+      state.submissionId = Number(submission.submission_id);
+      state.editing = true;
+      state.step = 0;
+      state.about.displayMode = submission.is_anonymous ? "anonymous" : "named";
+      state.about.displayName = submission.display_name || "";
+      state.about.roles = typeof submission.role === "string" ? submission.role.split(/\\s*,\\s*/).filter(Boolean) : [];
+      state.about.occupation = submission.occupation || "";
+      state.about.occupationQuery = state.about.occupation;
+      state.about.occupationMode = (catalog.occupationOptions || []).some((option) => option.toLowerCase() === state.about.occupation.toLowerCase()) ? "catalog" : "other";
+      state.about.city = submission.city || "";
+      state.about.locationQuery = state.about.city;
+      state.answers = Object.fromEntries(industry.questions.map((question) => {
+        const answer = submission.answers?.[question.id];
+        return [question.id, answer && typeof answer === "object" ? {
+          choice: typeof answer.choice === "string" ? answer.choice : "",
+          text: typeof answer.text === "string" ? answer.text : "",
+          audioData: typeof answer.audioData === "string" ? answer.audioData : "",
+          audioMimeType: typeof answer.audioMimeType === "string" ? answer.audioMimeType : "",
+          durationSeconds: Number.isInteger(answer.durationSeconds) ? answer.durationSeconds : null
+        } : {
+          choice: "",
+          text: "",
+          audioData: "",
+          audioMimeType: "",
+          durationSeconds: null
+        }];
+      }));
+      state.consent = {
+        roundtableInterest: Boolean(submission.roundtable_interest),
+        useVoiceInRoundtable: Boolean(submission.use_voice_in_roundtable),
+        contactMe: Boolean(submission.contact_me)
+      };
+      return true;
+    } catch (error) {
+      if (/function .*get_voice_submission|schema cache/i.test(error.message || "")) return false;
+      throw error;
     }
   }
 
@@ -1389,25 +1480,32 @@ async function initSurvey() {
         useVoiceInRoundtable: state.consent.useVoiceInRoundtable,
         contactMe: state.consent.contactMe
       };
+      const neonBody = {
+        p_industry: responseData.industry,
+        p_role: responseData.role,
+        p_occupation: responseData.occupation,
+        p_city: responseData.city,
+        p_display_name: responseData.displayName,
+        p_is_anonymous: responseData.isAnonymous,
+        p_answers: responseData.answers,
+        p_roundtable_interest: responseData.roundtableInterest,
+        p_publish_to_wall: responseData.publishToWall,
+        p_use_voice_in_roundtable: responseData.useVoiceInRoundtable,
+        p_contact_me: responseData.contactMe
+      };
       const submission = state.authProvider === "neon"
-        ? await submitNeonVoice({
-            p_industry: responseData.industry,
-            p_role: responseData.role,
-            p_occupation: responseData.occupation,
-            p_city: responseData.city,
-            p_display_name: responseData.displayName,
-            p_is_anonymous: responseData.isAnonymous,
-            p_answers: responseData.answers,
-            p_roundtable_interest: responseData.roundtableInterest,
-            p_publish_to_wall: responseData.publishToWall,
-            p_use_voice_in_roundtable: responseData.useVoiceInRoundtable,
-            p_contact_me: responseData.contactMe
-          })
-        : { data: await postJson("/api/submissions", responseData), error: null };
+        ? state.editing
+          ? await updateNeonVoice({ p_submission_id: state.submissionId, ...neonBody })
+          : await submitNeonVoice(neonBody)
+        : state.editing
+          ? { data: await putJson("/api/submissions", { ...responseData, submissionId: state.submissionId }), error: null }
+          : { data: await postJson("/api/submissions", responseData), error: null };
       if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
       const submissionId = submission.data?.submission_id;
       if (!submissionId) throw new Error(submission.data?.error || "Your response could not be saved.");
       state.saved = true;
+      state.editing = true;
+      state.submissionId = Number(submissionId);
       clearDraft();
       renderSuccess();
     } catch (error) {
@@ -1424,6 +1522,15 @@ async function initSurvey() {
     wrapper.append(el("p", "section-lede", "Your perspective is ready for the Voices Wall. It may take a moment to appear as the wall refreshes."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
+    const edit = el("button", "btn ghost", "Edit your submission");
+    edit.type = "button";
+    edit.addEventListener("click", () => {
+      state.saved = false;
+      state.step = 0;
+      state.errors = "";
+      render();
+    });
+    actions.append(edit);
     const wall = el("a", "btn primary", "Visit the Voices Wall");
     wall.href = "wall.html";
     const home = el("a", "btn ghost", "Return home");

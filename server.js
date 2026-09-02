@@ -70,13 +70,27 @@ function validateSubmission(body) {
 }
 
 async function handleSubmission(req, res) {
-  if (req.method !== "POST") {
-    sendJson(res, 405, JSON.stringify({ error: "Method not allowed." }));
-    return;
-  }
   const user = await getAuthenticatedUser(req);
   if (!user || (!user.phoneNumberVerified && !user.phone_number_verified && !user.emailVerified && !user.email_verified)) {
-    sendJson(res, 401, JSON.stringify({ error: "Sign in with your phone before submitting." }));
+    sendJson(res, 401, JSON.stringify({ error: "Sign in with your verified account before submitting." }));
+    return;
+  }
+  if (req.method === "GET") {
+    const result = await pool.query(
+      `SELECT id AS submission_id, industry, role, occupation, city, display_name,
+              is_anonymous, answers, roundtable_interest, publish_to_wall,
+              use_voice_in_roundtable, contact_me
+       FROM public.submissions
+       WHERE user_id = $1
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [user.id]
+    );
+    sendJson(res, 200, JSON.stringify(result.rows[0] || null));
+    return;
+  }
+  if (req.method !== "POST" && req.method !== "PUT") {
+    sendJson(res, 405, JSON.stringify({ error: "Method not allowed." }));
     return;
   }
   const body = await readJsonBody(req);
@@ -88,28 +102,59 @@ async function handleSubmission(req, res) {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
-    const submission = await db.query(
-      `INSERT INTO public.submissions (
-        user_id, industry, role, occupation, city, display_name, is_anonymous, answers,
-        roundtable_interest, publish_to_wall, use_voice_in_roundtable, contact_me
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING id`,
-      [
-        user.id,
-        body.industry,
-        body.role,
-        body.occupation,
-        body.city,
-        body.isAnonymous ? null : body.displayName?.trim() || null,
-        body.isAnonymous,
-        answerSummary,
-        body.roundtableInterest,
-        body.publishToWall,
-        body.useVoiceInRoundtable,
-        body.contactMe
-      ]
-    );
-    const submissionId = submission.rows[0].id;
+    let submissionId;
+    if (req.method === "PUT") {
+      submissionId = Number(body.submissionId);
+      if (!Number.isInteger(submissionId) || submissionId < 1) throw new Error("The submission could not be found.");
+      const updated = await db.query(
+        `UPDATE public.submissions
+         SET industry = $1, role = $2, occupation = $3, city = $4, display_name = $5,
+             is_anonymous = $6, answers = $7, roundtable_interest = $8,
+             publish_to_wall = $9, use_voice_in_roundtable = $10, contact_me = $11
+         WHERE id = $12 AND user_id = $13
+         RETURNING id`,
+        [
+          body.industry,
+          body.role,
+          body.occupation,
+          body.city,
+          body.isAnonymous ? null : body.displayName?.trim() || null,
+          body.isAnonymous,
+          answerSummary,
+          body.roundtableInterest,
+          body.publishToWall,
+          body.useVoiceInRoundtable,
+          body.contactMe,
+          submissionId,
+          user.id
+        ]
+      );
+      if (!updated.rowCount) throw new Error("The submission could not be found.");
+      await db.query("DELETE FROM public.voice_notes WHERE submission_id = $1 AND user_id = $2", [submissionId, user.id]);
+    } else {
+      const submission = await db.query(
+        `INSERT INTO public.submissions (
+          user_id, industry, role, occupation, city, display_name, is_anonymous, answers,
+          roundtable_interest, publish_to_wall, use_voice_in_roundtable, contact_me
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id`,
+        [
+          user.id,
+          body.industry,
+          body.role,
+          body.occupation,
+          body.city,
+          body.isAnonymous ? null : body.displayName?.trim() || null,
+          body.isAnonymous,
+          answerSummary,
+          body.roundtableInterest,
+          body.publishToWall,
+          body.useVoiceInRoundtable,
+          body.contactMe
+        ]
+      );
+      submissionId = submission.rows[0].id;
+    }
     const displayName = body.isAnonymous ? "A participant" : body.displayName?.trim() || "A participant";
     for (const answer of Object.values(body.answers)) {
       await db.query(
