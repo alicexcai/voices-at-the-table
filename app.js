@@ -537,6 +537,7 @@ async function initSurvey() {
   let state = {
     industry: null,
     step: 0,
+    completedThrough: -1,
     authMode: "email",
     authStep: "request",
     authMessage: "",
@@ -618,6 +619,7 @@ async function initSurvey() {
       version: 3,
       industryId: state.industry.id,
       step: state.step,
+      completedThrough: state.completedThrough,
       submissionId: state.submissionId,
       editing: state.editing,
       about: state.about,
@@ -659,6 +661,10 @@ async function initSurvey() {
       const savedStep = Number.isInteger(draft.step) ? draft.step : 0;
       const migratedStep = draft.version >= 3 ? savedStep : savedStep === 1 ? 2 : savedStep === 2 ? 3 : savedStep;
       state.step = Math.max(0, Math.min(migratedStep, getSteps().length - 1));
+      const savedCompletedThrough = Number(draft.completedThrough);
+      state.completedThrough = Number.isInteger(savedCompletedThrough)
+        ? Math.max(-1, Math.min(savedCompletedThrough, getSteps().length - 1))
+        : Math.max(-1, state.step - 1);
       const draftSubmissionId = Number(draft.submissionId);
       state.submissionId = draft.submissionId !== null && Number.isInteger(draftSubmissionId) && draftSubmissionId > 0
         ? draftSubmissionId
@@ -714,6 +720,7 @@ async function initSurvey() {
       state.submissionId = Number(submission.submission_id);
       state.editing = true;
       state.step = 1;
+      state.completedThrough = getSteps().length - 1;
       state.about.displayMode = submission.is_anonymous ? "anonymous" : "named";
       state.about.displayName = submission.display_name || "";
       state.about.roles = typeof submission.role === "string" ? submission.role.split(/\s*,\s*/).filter(Boolean) : [];
@@ -785,18 +792,21 @@ async function initSurvey() {
   function render() {
     const steps = getSteps();
     const isAuthenticated = state.authStatus === "logged-in" && state.user && isSessionVerified(state.authProvider, state.user);
-    const completedSteps = isAuthenticated ? state.step : 0;
+    const completedSteps = isAuthenticated ? Math.max(0, state.completedThrough + 1) : 0;
     progress.replaceChildren();
     steps.forEach((item, index) => {
-      const button = el("button", `progress-step ${index === state.step ? "is-current" : ""} ${index < state.step ? "is-complete" : ""}`);
+      const isCurrent = index === state.step;
+      const isComplete = index <= state.completedThrough && !isCurrent;
+      const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""}`);
       button.type = "button";
-      button.disabled = !isAuthenticated || index > state.step;
+      button.disabled = !isAuthenticated || (index > state.completedThrough && index !== state.step);
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
       button.addEventListener("click", () => {
-        if (index <= state.step) {
+        if (index <= state.completedThrough) {
           syncCurrentStep();
           state.step = index;
           state.errors = "";
+          saveDraft();
           render();
         }
       });
@@ -1169,6 +1179,7 @@ async function initSurvey() {
     if (changed) {
       state.answers = {};
       state.openQuestions = {};
+      state.completedThrough = Math.min(state.completedThrough, state.step - 1);
     }
     state.errors = "";
     saveDraft();
@@ -1519,7 +1530,7 @@ async function initSurvey() {
     if (state.step > 0) {
       const back = el("button", "back-btn", "Back");
       back.type = "button";
-      back.addEventListener("click", () => { if (state.recorder) stopRecording(); syncCurrentStep(); state.step -= 1; state.errors = ""; render(); });
+      back.addEventListener("click", () => { if (state.recorder) stopRecording(); syncCurrentStep(); state.step -= 1; state.errors = ""; saveDraft(); render(); });
       actions.append(back);
     }
     const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? state.editing ? "Save changes" : "Submit my voice" : "Continue");
@@ -1605,7 +1616,9 @@ async function initSurvey() {
     }
     if (state.step < getSteps().length - 1) {
       if (state.recorder) stopRecording();
+      state.completedThrough = Math.max(state.completedThrough, state.step);
       state.step += 1;
+      saveDraft();
       render();
       return;
     }
@@ -1658,6 +1671,7 @@ async function initSurvey() {
       state.saved = true;
       state.editing = true;
       state.submissionId = Number(submissionId);
+      state.completedThrough = getSteps().length - 1;
       clearDraft();
       renderSuccess();
     } catch (error) {

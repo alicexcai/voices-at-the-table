@@ -78,8 +78,8 @@ a { color: inherit; text-decoration: none; }
 .progress-step .progress-num { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 50%; font-family: "Vidaloka", Georgia, serif; font-size: 13px; }
 .progress-step.is-current { color: var(--ink); }
 .progress-step.is-current .progress-num { background: var(--ink); color: var(--cream); }
-.progress-step.is-complete { color: var(--soft); }
-.progress-step.is-complete .progress-num { background: var(--yellow); color: var(--ink); }
+.progress-step.is-complete { color: var(--ink); }
+.progress-step.is-complete .progress-num { background: var(--blue); color: var(--ink); }
 
 .survey-content { min-width: 0; }
 .profile-layout { padding: 64px 0 96px; }
