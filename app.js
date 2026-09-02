@@ -7,6 +7,7 @@ const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-
 const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
 const DRAFT_STORAGE_PREFIX = "voices-at-the-table.survey-draft.v2";
+const NEON_SESSION_STORAGE_KEY = "voices-at-the-table.neon-session.v1";
 
 const neonClient = createClient({
   auth: { url: NEON_AUTH_URL, allowAnonymous: true },
@@ -227,6 +228,47 @@ const profileIdentity = (provider, user) => {
   return user?.name || "Participant";
 };
 
+function persistNeonSession(data, user = currentUserFrom(data)) {
+  const session = data?.session || (data?.token ? data : null);
+  const token = session?.access_token || session?.token;
+  if (!token || !user) return;
+  try {
+    sessionStorage.setItem(NEON_SESSION_STORAGE_KEY, JSON.stringify({
+      session: { ...session, token },
+      user
+    }));
+  } catch {
+    return;
+  }
+}
+
+function readPersistedNeonSession() {
+  try {
+    const persisted = JSON.parse(sessionStorage.getItem(NEON_SESSION_STORAGE_KEY) || "null");
+    const token = persisted?.session?.access_token || persisted?.session?.token;
+    if (!token || !persisted?.user) return null;
+    const tokenPayload = token.split(".")[1];
+    if (tokenPayload) {
+      const payload = JSON.parse(atob(tokenPayload.replace(/-/g, "+").replace(/_/g, "/")));
+      if (Number.isFinite(payload.exp) && payload.exp * 1000 <= Date.now()) {
+        clearPersistedNeonSession();
+        return null;
+      }
+    }
+    return persisted;
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedNeonSession() {
+  try {
+    sessionStorage.removeItem(NEON_SESSION_STORAGE_KEY);
+  } catch {
+    return;
+  }
+}
+
 async function signOutSession(provider) {
   if (provider === "better") {
     const response = await fetch("/api/auth/sign-out", {
@@ -240,12 +282,13 @@ async function signOutSession(provider) {
   }
   const result = await neonClient.auth.signOut();
   if (result?.error) throw new Error(result.error.message || "We could not sign you out.");
+  clearPersistedNeonSession();
 }
 
 async function getNeonAccessToken() {
   const sessionResult = await neonClient.auth.getSession();
   const session = sessionResult.data?.session;
-  const token = session?.access_token || session?.token;
+  const token = session?.access_token || session?.token || readPersistedNeonSession()?.session?.token;
   if (!token) throw new Error("Your email session expired. Please sign in again.");
   return token;
 }
@@ -330,7 +373,15 @@ async function getSession() {
     const neonResult = await neonClient.auth.getSession();
     const user = currentUserFrom(neonResult.data);
     const hasNeonSession = Boolean(neonResult.data?.session && user);
-    return { status: hasNeonSession ? "logged-in" : "logged-out", provider: hasNeonSession ? "neon" : null, data: neonResult.data, user: hasNeonSession ? user : null, error: neonResult.error };
+    if (hasNeonSession) {
+      persistNeonSession(neonResult.data, user);
+      return { status: "logged-in", provider: "neon", data: neonResult.data, user, error: neonResult.error };
+    }
+    const persisted = readPersistedNeonSession();
+    if (persisted) {
+      return { status: "logged-in", provider: "neon", data: persisted, user: persisted.user, error: null };
+    }
+    return { status: "logged-out", provider: null, data: neonResult.data, user: null, error: neonResult.error };
   } catch (error) {
     return { status: "logged-out", provider: null, data: null, user: null, error };
   }
@@ -451,8 +502,8 @@ async function initSurvey() {
   try {
     await loadCatalog();
     await refreshSession();
-    const restoredDraft = restoreDraft();
-    if (!restoredDraft && state.authStatus === "logged-in") await loadExistingSubmission();
+    restoreDraft();
+    if (state.authStatus === "logged-in" && !state.submissionId) await loadExistingSubmission();
     render();
   } catch (error) {
     content.textContent = error.message;
@@ -585,12 +636,13 @@ async function initSurvey() {
       state.step = 0;
       state.about.displayMode = submission.is_anonymous ? "anonymous" : "named";
       state.about.displayName = submission.display_name || "";
-      state.about.roles = typeof submission.role === "string" ? submission.role.split(/\\s*,\\s*/).filter(Boolean) : [];
+      state.about.roles = typeof submission.role === "string" ? submission.role.split(/\s*,\s*/).filter(Boolean) : [];
       state.about.occupation = submission.occupation || "";
       state.about.occupationQuery = state.about.occupation;
       state.about.occupationMode = (catalog.occupationOptions || []).some((option) => option.toLowerCase() === state.about.occupation.toLowerCase()) ? "catalog" : "other";
       state.about.city = submission.city || "";
       state.about.locationQuery = state.about.city;
+      sessionStatus.textContent = "Existing response loaded · ready to edit.";
       state.answers = Object.fromEntries(industry.questions.map((question) => {
         const answer = submission.answers?.[question.id];
         return [question.id, answer && typeof answer === "object" ? {
@@ -615,6 +667,14 @@ async function initSurvey() {
       return true;
     } catch (error) {
       if (/function .*get_voice_submission|schema cache/i.test(error.message || "")) return false;
+      if (state.authProvider === "neon" && /401|403|unauthorized|forbidden|expired|session/i.test(error.message || "")) {
+        clearPersistedNeonSession();
+        state.user = null;
+        state.authProvider = null;
+        state.authStatus = "logged-out";
+        sessionStatus.textContent = "Sign in to continue editing your response.";
+        return false;
+      }
       throw error;
     }
   }
@@ -826,8 +886,11 @@ async function initSurvey() {
             name: "Participant"
           });
           if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
+          persistNeonSession(result.data);
           await refreshSession();
           if (state.authStatus !== "logged-in" || !state.user) throw new Error("We could not establish your verified email session.");
+          restoreDraft();
+          if (!state.submissionId) await loadExistingSubmission();
           saveDraft();
           state.authStep = "request";
           state.pendingEmail = "";
@@ -844,6 +907,8 @@ async function initSurvey() {
           code: form.elements.authCode.value.trim()
         });
         await refreshSession();
+        restoreDraft();
+        if (!state.submissionId) await loadExistingSubmission();
         state.authStep = "request";
       }
       render();
@@ -906,7 +971,7 @@ async function initSurvey() {
   function renderAbout() {
     content.append(el("span", "section-kicker", "01 / About"));
     content.append(el("h2", null, "How should we name you?"));
-    content.append(el("p", "section-lede", "Choose how your perspective should appear on the Voices Wall. Your verified contact information stays private."));
+    content.append(el("p", "section-lede", state.editing ? "Your saved response is loaded. Update any detail before moving through the questions again." : "Choose how your perspective should appear on the Voices Wall. Your verified contact information stays private."));
     const card = el("div", "form-card");
     card.append(el("h3", null, "Your name on the wall"));
     card.append(el("p", "card-intro", "You can stay anonymous or choose the name people should see."));
@@ -1370,7 +1435,7 @@ async function initSurvey() {
       back.addEventListener("click", () => { if (state.recorder) stopRecording(); syncCurrentStep(); state.step -= 1; state.errors = ""; render(); });
       actions.append(back);
     }
-    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
+    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? state.editing ? "Save changes" : "Submit my voice" : "Continue");
     next.type = "button";
     next.addEventListener("click", handleNext);
     actions.append(next);
