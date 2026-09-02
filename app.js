@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@neondatabase/neon-js@0.6.2-beta";
 import { OpenStreetMapProvider } from "https://esm.sh/leaflet-geosearch@4.4.0";
-import { createIcons, Mic, Pause, Play, Square } from "https://esm.sh/lucide@0.468.0";
+import { createElement, Mic, Pause, Play, Square } from "https://esm.sh/lucide@0.468.0";
 
 const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.aws.neon.tech/neondb/auth";
 const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
@@ -24,18 +24,17 @@ const el = (tag, className, text) => {
   return node;
 };
 
-const lucideIcons = { Mic, Pause, Play, Square };
+const lucideIcons = { mic: Mic, pause: Pause, play: Play, square: Square };
 
 function createIcon(name) {
-  const icon = document.createElement("i");
-  icon.dataset.lucide = name;
+  const icon = createElement(lucideIcons[name]);
   icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
   return icon;
 }
 
 function setIconButton(button, name, label, pressed = null) {
   button.replaceChildren(createIcon(name));
-  createIcons({ root: button, icons: lucideIcons });
   button.setAttribute("aria-label", label);
   button.title = label;
   if (pressed === null) button.removeAttribute("aria-pressed");
