@@ -222,6 +222,8 @@ async function initSurvey() {
     saved: false,
     recorder: null,
     recordingQuestionId: null,
+    recordingStarting: false,
+    recordingBlockedInFrame: false,
     recordingChunks: [],
     recordingStartedAt: null,
     recordingTimer: null,
@@ -977,7 +979,17 @@ async function initSurvey() {
     next.type = "button";
     next.addEventListener("click", handleNext);
     actions.append(next);
-    if (state.errors) actions.append(el("p", "validation-message", state.errors));
+    if (state.errors) {
+      actions.append(el("p", "validation-message", state.errors));
+      if (state.recordingBlockedInFrame) {
+        const openPreview = el("button", "text-button", "Open in a new tab");
+        openPreview.type = "button";
+        openPreview.addEventListener("click", () => {
+          window.open(window.location.href, "_blank", "noopener,noreferrer");
+        });
+        actions.append(openPreview);
+      }
+    }
     card.append(actions);
   }
 
@@ -1113,12 +1125,17 @@ async function initSurvey() {
   }
 
   async function startRecording(questionId) {
+    if (state.recorder || state.recordingStarting) return;
+    state.recordingStarting = true;
+    state.recordingBlockedInFrame = false;
     if (!window.isSecureContext) {
+      state.recordingStarting = false;
       state.errors = "Voice recording needs a secure browser connection. You can still submit a written response.";
       render();
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      state.recordingStarting = false;
       state.errors = "Voice recording is not supported in this browser. You can still submit a written response.";
       render();
       return;
@@ -1131,11 +1148,14 @@ async function initSurvey() {
           autoGainControl: true
         }
       });
-      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const supportedMimeType = typeof MediaRecorder.isTypeSupported === "function"
+        ? ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type))
+        : "";
+      const recorder = supportedMimeType ? new MediaRecorder(stream, { mimeType: supportedMimeType }) : new MediaRecorder(stream);
       const chunks = [];
       const startedAt = Date.now();
       let finished = false;
+      state.recordingStarting = false;
       state.recordingStream = stream;
       state.recordingQuestionId = questionId;
       state.recordingChunks = chunks;
@@ -1188,15 +1208,20 @@ async function initSurvey() {
       state.errors = "";
       render();
     } catch (error) {
+      state.recordingStarting = false;
       state.recordingStream?.getTracks().forEach((track) => track.stop());
       state.recordingStream = null;
       state.recordingQuestionId = null;
       state.recorder = null;
+      const blockedInFrame = (error?.name === "NotAllowedError" || error?.name === "SecurityError") && window.top !== window.self;
+      state.recordingBlockedInFrame = blockedInFrame;
       state.errors = error?.name === "NotFoundError"
         ? "No microphone was found. Connect a microphone or submit a written response."
-        : error?.name === "NotAllowedError" || error?.name === "SecurityError"
-          ? "Allow microphone access in your browser, then try again. You can still submit a written response."
-          : "The microphone could not be started. Check your microphone and try again, or submit a written response.";
+        : blockedInFrame
+          ? "This embedded preview cannot access your microphone. Open the survey in a new browser tab and allow microphone access, or submit a written response."
+          : error?.name === "NotAllowedError" || error?.name === "SecurityError"
+            ? "Allow microphone access in your browser, then try again. You can still submit a written response."
+            : "The microphone could not be started. Check your microphone and try again, or submit a written response.";
       render();
     }
   }
