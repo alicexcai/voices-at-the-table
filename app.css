@@ -150,6 +150,9 @@ a { color: inherit; text-decoration: none; }
 .voice-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .voice-status { min-height: 20px; margin-top: 10px; color: var(--soft); font-size: 12px; }
 .btn.small { padding: 9px 15px; font-size: 13px; }
+.icon-button { width: 44px; min-width: 44px; height: 44px; justify-content: center; padding: 9px; }
+.icon-button svg { width: 21px; height: 21px; display: block; }
+.voice-card .icon-button { width: 40px; min-width: 40px; height: 40px; padding: 8px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; transform: none; }
 .form-actions { display: flex; justify-content: space-between; gap: 14px; align-items: center; margin-top: 28px; }
 .form-actions .back-btn { border: 0; background: transparent; padding: 10px 0; text-decoration: underline; cursor: pointer; font: inherit; }

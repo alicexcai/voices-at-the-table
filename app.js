@@ -23,6 +23,37 @@ const el = (tag, className, text) => {
   return node;
 };
 
+const iconPaths = {
+  record: '<circle cx="12" cy="12" r="6" fill="currentColor"/>',
+  play: '<path d="M8 5.5v13l10-6.5L8 5.5Z" fill="currentColor"/>',
+  pause: '<rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor"/><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor"/>',
+  stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="1.5" fill="currentColor"/>'
+};
+
+function createIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.innerHTML = iconPaths[name];
+  return svg;
+}
+
+function setIconButton(button, name, label, pressed = null) {
+  button.replaceChildren(createIcon(name));
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  if (pressed === null) button.removeAttribute("aria-pressed");
+  else button.setAttribute("aria-pressed", String(pressed));
+}
+
+function iconButton(className, name, label, pressed = null) {
+  const button = el("button", `${className} icon-button`);
+  button.type = "button";
+  setIconButton(button, name, label, pressed);
+  return button;
+}
+
 const formatDuration = (seconds) => {
   if (!seconds) return "Written voice";
   const minutes = Math.floor(seconds / 60);
@@ -79,7 +110,7 @@ function resetPlayback(playback) {
   if (playback.frame) window.cancelAnimationFrame(playback.frame);
   playback.audioContext?.close().catch(() => {});
   playback.button.classList.remove("is-playing");
-  playback.button.textContent = playback.playLabel;
+  setIconButton(playback.button, "play", playback.playLabel, false);
   if (activePlayback === playback) activePlayback = null;
 }
 
@@ -102,7 +133,7 @@ async function playAudio(audioData, button, canvas, labels = {}) {
         await activePlayback.audioContext?.resume();
         activePlayback.paint();
         button.classList.add("is-playing");
-        button.textContent = pauseLabel;
+        setIconButton(button, "pause", pauseLabel, true);
       } catch {
         resetPlayback(activePlayback);
       }
@@ -111,7 +142,7 @@ async function playAudio(audioData, button, canvas, labels = {}) {
       if (activePlayback.frame) window.cancelAnimationFrame(activePlayback.frame);
       activePlayback.frame = null;
       button.classList.remove("is-playing");
-      button.textContent = playLabel;
+      setIconButton(button, "play", playLabel, false);
     }
     return;
   }
@@ -152,7 +183,7 @@ async function playAudio(audioData, button, canvas, labels = {}) {
   audio.addEventListener("ended", finish, { once: true });
   audio.addEventListener("error", finish, { once: true });
   button.classList.add("is-playing");
-  button.textContent = pauseLabel;
+  setIconButton(button, "pause", pauseLabel, true);
   try {
     await audio.play();
     await playback.audioContext?.resume();
@@ -1050,8 +1081,7 @@ async function initSurvey() {
       copy.append(el("strong", null, answer.audioData ? "Voice note captured" : "Make this one heard"));
       copy.append(el("p", null, answer.audioData ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
       const actions = el("div", "voice-actions");
-      const recordButton = el("button", "btn primary small", isRecording ? "Stop recording" : "Record a voice note");
-      recordButton.type = "button";
+      const recordButton = iconButton("btn primary small", isRecording ? "stop" : "record", isRecording ? "Stop recording" : "Record a voice note", isRecording);
       recordButton.addEventListener("click", () => {
         syncCurrentStep();
         if (state.recorder) {
@@ -1073,8 +1103,7 @@ async function initSurvey() {
         }
       }
       if (answer.audioData) {
-        const playButton = el("button", "btn ghost small", "Play recording");
-        playButton.type = "button";
+        const playButton = iconButton("btn ghost small", "play", "Play recording", false);
         playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, waveform, {
           play: "Play recording",
           pause: "Pause recording"
@@ -1599,8 +1628,7 @@ async function initWall() {
       drawDecodedWaveform(waveform, voice.audio_data);
       card.append(waveform);
 
-      const play = el("button", "play-button", "Play voice");
-      play.type = "button";
+      const play = iconButton("play-button", "play", "Play voice", false);
       play.addEventListener("click", () => playAudio(voice.audio_data, play, waveform, {
         play: "Play voice",
         pause: "Pause voice"
