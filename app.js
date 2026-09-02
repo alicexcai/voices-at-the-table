@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@neondatabase/neon-js@0.6.2-beta";
 import { OpenStreetMapProvider } from "https://esm.sh/leaflet-geosearch@4.4.0";
+import { createIcons, Mic, Pause, Play, Square } from "https://esm.sh/lucide@0.468.0";
 
 const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.aws.neon.tech/neondb/auth";
 const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
@@ -23,24 +24,18 @@ const el = (tag, className, text) => {
   return node;
 };
 
-const iconPaths = {
-  record: '<circle cx="12" cy="12" r="6" fill="currentColor"/>',
-  play: '<path d="M8 5.5v13l10-6.5L8 5.5Z" fill="currentColor"/>',
-  pause: '<rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor"/><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor"/>',
-  stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="1.5" fill="currentColor"/>'
-};
+const lucideIcons = { Mic, Pause, Play, Square };
 
 function createIcon(name) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("focusable", "false");
-  svg.innerHTML = iconPaths[name];
-  return svg;
+  const icon = document.createElement("i");
+  icon.dataset.lucide = name;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
 }
 
 function setIconButton(button, name, label, pressed = null) {
   button.replaceChildren(createIcon(name));
+  createIcons({ root: button, icons: lucideIcons });
   button.setAttribute("aria-label", label);
   button.title = label;
   if (pressed === null) button.removeAttribute("aria-pressed");
@@ -1074,14 +1069,12 @@ async function initSurvey() {
       panel.append(field);
       const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
       const voicePanel = el("div", "voice-panel question-voice-panel");
-      const orb = el("div", `voice-orb ${isRecording ? "is-recording" : ""}`);
-      orb.setAttribute("aria-hidden", "true");
-      orb.textContent = isRecording ? "REC" : "VOICE";
       const copy = el("div", "voice-copy");
       copy.append(el("strong", null, answer.audioData ? "Voice note captured" : "Make this one heard"));
       copy.append(el("p", null, answer.audioData ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
+      const audioRow = el("div", "voice-audio-row");
       const actions = el("div", "voice-actions");
-      const recordButton = iconButton("btn primary small", isRecording ? "stop" : "record", isRecording ? "Stop recording" : "Record a voice note", isRecording);
+      const recordButton = iconButton("btn primary small", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
       recordButton.addEventListener("click", () => {
         syncCurrentStep();
         if (state.recorder) {
@@ -1110,9 +1103,10 @@ async function initSurvey() {
         }));
         actions.append(playButton);
       }
-      copy.append(actions);
-      voicePanel.append(orb, copy);
-      if (waveform) voicePanel.append(waveform);
+      audioRow.append(actions);
+      if (waveform) audioRow.append(waveform);
+      copy.append(audioRow);
+      voicePanel.append(copy);
       panel.append(voicePanel);
       const textField = el("div", "field question-text-response");
       const textLabel = document.createElement("label");
@@ -1621,19 +1615,20 @@ async function initWall() {
     const audioAvailable = Boolean(voice.audio_data);
     const duration = el("span", "voice-duration", formatDuration(voice.duration_seconds));
     if (audioAvailable) {
-      const waveform = document.createElement("canvas");
-      waveform.className = "voice-waveform live-waveform wall-waveform";
-      waveform.height = 56;
-      waveform.setAttribute("aria-label", "Voice recording waveform");
-      drawDecodedWaveform(waveform, voice.audio_data);
-      card.append(waveform);
-
+      const audioRow = el("div", "voice-audio-row voice-card-audio-row");
       const play = iconButton("play-button", "play", "Play voice", false);
       play.addEventListener("click", () => playAudio(voice.audio_data, play, waveform, {
         play: "Play voice",
         pause: "Pause voice"
       }));
-      footer.append(duration, play);
+      const waveform = document.createElement("canvas");
+      waveform.className = "voice-waveform live-waveform wall-waveform";
+      waveform.height = 56;
+      waveform.setAttribute("aria-label", "Voice recording waveform");
+      drawDecodedWaveform(waveform, voice.audio_data);
+      audioRow.append(play, waveform);
+      card.append(audioRow);
+      footer.append(duration);
     } else {
       footer.append(duration);
     }
