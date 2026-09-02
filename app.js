@@ -5,6 +5,7 @@ const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.a
 const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
 const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
+const DRAFT_STORAGE_PREFIX = "voices-at-the-table.survey-draft.v2";
 
 const neonClient = createClient({
   auth: { url: NEON_AUTH_URL, allowAnonymous: true },
@@ -31,7 +32,17 @@ const formatDuration = (seconds) => {
 
 const currentUserFrom = (data) => data?.user || data?.session?.user || null;
 
-const isVerified = (user) => user?.phoneNumberVerified === true || user?.phone_number_verified === true || user?.emailVerified === true || user?.email_verified === true;
+const isVerified = (user) => [
+  user?.phoneNumberVerified,
+  user?.phone_number_verified,
+  user?.emailVerified,
+  user?.email_verified,
+  user?.email?.verified,
+  user?.verified,
+  user?.isVerified
+].some((value) => value === true || value === "true");
+
+const isSessionVerified = (provider, user) => provider === "neon" || isVerified(user);
 
 async function postJson(url, body) {
   const response = await fetch(url, {
@@ -118,7 +129,16 @@ async function initSurvey() {
 
   try {
     await loadCatalog();
-    renderIndustryChoices();
+    await refreshSession();
+    if (restoreDraft()) {
+      picker.hidden = true;
+      workspace.hidden = false;
+      industryName.textContent = state.industry.label;
+      industryDescriptor.textContent = state.industry.descriptor;
+      render();
+    } else {
+      renderIndustryChoices();
+    }
   } catch (error) {
     choices.textContent = error.message;
     return;
@@ -156,6 +176,7 @@ async function initSurvey() {
     industryName.textContent = state.industry.label;
     industryDescriptor.textContent = state.industry.descriptor;
     await refreshSession();
+    saveDraft();
     render();
   }
 
@@ -166,11 +187,104 @@ async function initSurvey() {
       state.authProvider = session.provider;
       const identity = state.authProvider === "better" ? "phone" : "email";
       sessionStatus.textContent = state.user
-        ? (isVerified(state.user) ? `Verified ${identity} · private profile` : "Verify your email to submit")
+        ? (isSessionVerified(state.authProvider, state.user) ? `Verified ${identity} · private profile` : `Verify your ${identity} to submit`)
         : `Your ${identity} is private.`;
     } catch {
       state.user = null;
+      state.authProvider = null;
       sessionStatus.textContent = "Sign in to save your response.";
+    }
+  }
+
+  function draftStorageKey() {
+    if (!state.user?.id || !state.authProvider) return "";
+    return `${DRAFT_STORAGE_PREFIX}.${state.authProvider}.${encodeURIComponent(String(state.user.id))}`;
+  }
+
+  function saveDraft() {
+    const key = draftStorageKey();
+    if (!key) return false;
+    if (!state.industry) return false;
+    const draft = {
+      version: 2,
+      industryId: state.industry.id,
+      step: state.step,
+      about: state.about,
+      answers: state.answers,
+      openQuestions: state.openQuestions,
+      consent: state.consent
+    };
+    try {
+      localStorage.setItem(key, JSON.stringify(draft));
+      return true;
+    } catch {
+      try {
+        const withoutAudio = {
+          ...draft,
+          answers: Object.fromEntries(Object.entries(state.answers).map(([id, answer]) => [id, {
+            choice: answer.choice || "",
+            text: answer.text || "",
+            audioData: "",
+            audioMimeType: "",
+            durationSeconds: null
+          }]))
+        };
+        localStorage.setItem(key, JSON.stringify(withoutAudio));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  function restoreDraft() {
+    const key = draftStorageKey();
+    if (!key) return false;
+    try {
+      const draft = JSON.parse(localStorage.getItem(key) || "null");
+      const industry = catalog.industries.find((item) => item.id === draft?.industryId && item.status === "open");
+      if (!industry) return false;
+      state.industry = industry;
+      state.step = Math.max(0, Math.min(Number.isInteger(draft.step) ? draft.step : 0, getSteps().length - 1));
+      state.about = {
+        ...state.about,
+        ...(draft.about && typeof draft.about === "object" ? draft.about : {})
+      };
+      state.about.displayMode = state.about.displayMode === "named" ? "named" : "anonymous";
+      state.answers = Object.fromEntries(industry.questions.map((question) => {
+        const answer = draft.answers?.[question.id];
+        return [question.id, answer && typeof answer === "object" ? {
+          choice: typeof answer.choice === "string" ? answer.choice : "",
+          text: typeof answer.text === "string" ? answer.text : "",
+          audioData: typeof answer.audioData === "string" ? answer.audioData : "",
+          audioMimeType: typeof answer.audioMimeType === "string" ? answer.audioMimeType : "",
+          durationSeconds: Number.isInteger(answer.durationSeconds) ? answer.durationSeconds : null
+        } : {
+          choice: "",
+          text: "",
+          audioData: "",
+          audioMimeType: "",
+          durationSeconds: null
+        }];
+      }));
+      state.openQuestions = draft.openQuestions && typeof draft.openQuestions === "object" ? draft.openQuestions : {};
+      state.consent = {
+        ...state.consent,
+        ...(draft.consent && typeof draft.consent === "object" ? draft.consent : {})
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function clearDraft() {
+    const key = draftStorageKey();
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      return;
     }
   }
 
@@ -202,7 +316,7 @@ async function initSurvey() {
     });
     stepCount.textContent = `Step ${state.step + 1} of ${steps.length}`;
     content.replaceChildren();
-    if (!state.user || !isVerified(state.user)) {
+    if (!state.user || !isSessionVerified(state.authProvider, state.user)) {
       renderAuthGate();
       return;
     }
@@ -391,7 +505,10 @@ async function initSurvey() {
       ...updates
     };
     state.answers[questionId] = answer;
-    if (isQuestionComplete(answer)) sessionStatus.textContent = "Completed responses are saved for this session.";
+    const saved = saveDraft();
+    if (saved) sessionStatus.textContent = isQuestionComplete(answer)
+      ? "Completed response saved on this device."
+      : "Draft saved on this device.";
   }
 
   function completedAnswers() {
@@ -435,6 +552,7 @@ async function initSurvey() {
       wrapper.append(input, labelNode);
       input.addEventListener("change", () => {
         state.about.displayMode = value;
+        saveDraft();
         render();
       });
       displayChoices.append(wrapper);
@@ -456,6 +574,7 @@ async function initSurvey() {
     role.value = state.about.role;
     role.addEventListener("change", () => {
       state.about.role = role.value;
+      saveDraft();
     });
     roleField.append(roleLabel, role);
     grid.append(roleField);
@@ -480,6 +599,7 @@ async function initSurvey() {
     input.required = required;
     input.addEventListener("input", () => {
       state.about[stateKey] = input.value.trim();
+      saveDraft();
     });
     field.append(labelNode, input);
     return field;
@@ -528,7 +648,8 @@ async function initSurvey() {
           results.replaceChildren();
           results.hidden = true;
           state.errors = "";
-          sessionStatus.textContent = "Your location is saved for this session.";
+          saveDraft();
+          sessionStatus.textContent = "Your location is saved on this device.";
         });
         results.append(option);
       });
@@ -539,6 +660,7 @@ async function initSurvey() {
       const query = input.value.trim();
       state.about.locationQuery = query;
       state.about.city = "";
+      saveDraft();
       input.dataset.selected = "false";
       state.errors = "";
       window.clearTimeout(locationSearchTimer);
@@ -691,7 +813,10 @@ async function initSurvey() {
       input.name = consent.id;
       input.checked = state.consent[consent.id];
       input.required = consent.required;
-      input.addEventListener("change", () => { state.consent[consent.id] = input.checked; });
+      input.addEventListener("change", () => {
+        state.consent[consent.id] = input.checked;
+        saveDraft();
+      });
       row.append(input, document.createTextNode(consent.label));
       field.append(row);
       list.append(field);
@@ -747,6 +872,7 @@ async function initSurvey() {
         const input = document.querySelector(`[name="${consent.id}"]`);
         if (input) state.consent[consent.id] = input.checked;
       });
+      saveDraft();
     }
   }
 
@@ -821,6 +947,7 @@ async function initSurvey() {
       const submissionId = submission.data?.submission_id;
       if (!submissionId) throw new Error(submission.data?.error || "Your response could not be saved.");
       state.saved = true;
+      clearDraft();
       renderSuccess();
     } catch (error) {
       state.errors = error.message || "We could not save your response yet. Please try again.";
