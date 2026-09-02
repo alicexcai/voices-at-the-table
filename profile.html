@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Read and listen to perspectives shared through Voices at the Table.">
-  <title>Voices Wall — Voices at the Table</title>
+  <meta name="description" content="Manage your private Voices at the Table participant profile.">
+  <title>Your profile — Voices at the Table</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vidaloka&family=Pavanam&family=Inter:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="app.css">
 </head>
-<body data-page="wall">
+<body data-page="profile">
   <div class="masthead">
     <div class="row">
       <a class="mark" href="index.html">Voices at the Table</a>
       <nav class="site-nav" aria-label="Main navigation">
         <a href="survey.html">Share your voice</a>
-        <a href="wall.html" aria-current="page">Voices wall</a>
+        <a href="wall.html">Voices wall</a>
       </nav>
-      <div class="site-auth" id="siteAuth" aria-live="polite"><span class="right">Phase I / Public forum</span></div>
+      <div class="site-auth" id="siteAuth" aria-live="polite"><span class="right">Your private profile</span></div>
     </div>
   </div>
 
@@ -30,20 +30,16 @@
   <main class="page-main">
     <header class="page-intro">
       <div class="app-wrap">
-        <span class="label">The Voices Wall</span>
-        <h1>Many ways to imagine what comes next.</h1>
-        <p>These are the hopes, questions, and lived experiences people have chosen to place in public. Listen for the patterns, and the places where the edges do not line up.</p>
-        <div class="intro-meta"><span class="meta-dot" aria-hidden="true"></span><span id="wallIntroCount">A growing collection</span><span>·</span><span>Phase I / personal perspectives</span></div>
+        <span class="label">Your private profile</span>
+        <h1>A place to keep your seat at the table.</h1>
+        <p>Your sign-in keeps your drafts and future participation connected. Your email or phone number stays private and never appears on the Voices Wall.</p>
       </div>
     </header>
 
     <div class="app-wrap">
-      <section class="wall-controls" aria-label="Filter voices">
-        <div class="filter-row" id="wallFilters"></div>
-        <span class="wall-count" id="wallCount"></span>
+      <section class="profile-layout" id="profileContent" aria-live="polite">
+        <div class="auth-card"><p class="section-lede">Loading your profile…</p></div>
       </section>
-      <p class="wall-note">Every voice here is shown with the speaker’s consent. Email addresses and private profile details never appear on the wall.</p>
-      <section class="wall-grid" id="wallGrid" aria-live="polite"></section>
     </div>
   </main>
 

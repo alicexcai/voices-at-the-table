@@ -44,6 +44,45 @@ const isVerified = (user) => [
 
 const isSessionVerified = (provider, user) => provider === "neon" || isVerified(user);
 
+const profileIdentity = (provider, user) => {
+  if (provider === "better" && user?.phoneNumber) return user.phoneNumber;
+  if (user?.email && !user.email.endsWith("@phone.invalid")) return user.email;
+  return user?.name || "Participant";
+};
+
+async function signOutSession(provider) {
+  if (provider === "better") {
+    const response = await fetch("/api/auth/sign-out", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: "{}"
+    });
+    if (!response.ok) throw new Error("We could not sign you out.");
+    return;
+  }
+  const result = await neonClient.auth.signOut();
+  if (result?.error) throw new Error(result.error.message || "We could not sign you out.");
+}
+
+async function submitNeonVoice(body) {
+  const sessionResult = await neonClient.auth.getSession({ forceFetch: true });
+  const session = sessionResult.data?.session;
+  const token = session?.access_token || session?.token;
+  if (!token) throw new Error("Your email session expired. Please sign in again.");
+  const response = await fetch(`${NEON_DATA_API_URL}/rpc/submit_voice_submission`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || payload.error || "Your response could not be saved.");
+  return { data: Array.isArray(payload) ? payload[0] : payload, error: null };
+}
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -64,13 +103,68 @@ async function loadCatalog() {
 }
 
 async function getSession() {
-  const betterResponse = await fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" });
-  const betterData = betterResponse.ok ? await betterResponse.json() : null;
-  const betterUser = currentUserFrom(betterData);
-  if (betterUser) return { provider: "better", data: betterData, user: betterUser, error: null };
+  try {
+    const betterResponse = await fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" });
+    const betterData = betterResponse.ok ? await betterResponse.json() : null;
+    const betterUser = currentUserFrom(betterData);
+    const hasBetterSession = Boolean(betterData?.session && betterUser);
+    if (hasBetterSession) return { status: "logged-in", provider: "better", data: betterData, user: betterUser, error: null };
+  } catch {
+    // Fall through to the Neon Auth session.
+  }
 
-  const neonResult = await neonClient.auth.getSession({ query: { disableCookieCache: true } });
-  return { provider: "neon", data: neonResult.data, user: currentUserFrom(neonResult.data), error: neonResult.error };
+  try {
+    const neonResult = await neonClient.auth.getSession({ forceFetch: true });
+    const user = currentUserFrom(neonResult.data);
+    const hasNeonSession = Boolean(neonResult.data?.session && user);
+    return { status: hasNeonSession ? "logged-in" : "logged-out", provider: hasNeonSession ? "neon" : null, data: neonResult.data, user: hasNeonSession ? user : null, error: neonResult.error };
+  } catch (error) {
+    return { status: "logged-out", provider: null, data: null, user: null, error };
+  }
+}
+
+async function initSiteAuth() {
+  const mount = document.querySelector("#siteAuth");
+  if (!mount) return;
+  let authState = { status: "loading", provider: null, user: null };
+
+  const renderSiteAuth = () => {
+    mount.replaceChildren();
+    if (authState.status === "loading") {
+      mount.append(el("span", "right", "Checking your seat…"));
+      return;
+    }
+    if (authState.status === "logged-in" && authState.user) {
+      const profile = el("a", "auth-profile-link", "Profile");
+      profile.href = "profile.html";
+      const identity = el("span", "site-auth-identity", profileIdentity(authState.provider, authState.user));
+      const logout = el("button", "text-button auth-logout", "Log out");
+      logout.type = "button";
+      logout.addEventListener("click", async () => {
+        logout.disabled = true;
+        try {
+          await signOutSession(authState.provider);
+          authState = { status: "logged-out", provider: null, user: null };
+          renderSiteAuth();
+          window.dispatchEvent(new CustomEvent("authchange", { detail: authState }));
+        } catch (error) {
+          logout.disabled = false;
+          logout.textContent = error.message || "Log out";
+        }
+      });
+      mount.append(profile, identity, logout);
+      return;
+    }
+    const status = el("span", "right", "Phase I / Personal perspectives");
+    const signIn = el("a", "auth-login-link", "Sign in");
+    signIn.href = "survey.html";
+    mount.append(status, signIn);
+  };
+
+  renderSiteAuth();
+  authState = await getSession();
+  renderSiteAuth();
+  window.dispatchEvent(new CustomEvent("authchange", { detail: authState }));
 }
 
 if (page === "survey") {
@@ -80,6 +174,12 @@ if (page === "survey") {
 if (page === "wall") {
   initWall();
 }
+
+if (page === "profile") {
+  initProfile();
+}
+
+initSiteAuth();
 
 async function initSurvey() {
   const picker = document.querySelector("#industryPicker");
@@ -101,6 +201,7 @@ async function initSurvey() {
     pendingEmail: "",
     pendingPhone: "",
     authProvider: null,
+    authStatus: "loading",
     errors: "",
     user: null,
     about: {
@@ -185,6 +286,7 @@ async function initSurvey() {
       const session = await getSession();
       state.user = session.user;
       state.authProvider = session.provider;
+      state.authStatus = session.status;
       const identity = state.authProvider === "better" ? "phone" : "email";
       sessionStatus.textContent = state.user
         ? (isSessionVerified(state.authProvider, state.user) ? `Verified ${identity} · private profile` : `Verify your ${identity} to submit`)
@@ -192,6 +294,7 @@ async function initSurvey() {
     } catch {
       state.user = null;
       state.authProvider = null;
+      state.authStatus = "logged-out";
       sessionStatus.textContent = "Sign in to save your response.";
     }
   }
@@ -316,7 +419,7 @@ async function initSurvey() {
     });
     stepCount.textContent = `Step ${state.step + 1} of ${steps.length}`;
     content.replaceChildren();
-    if (!state.user || !isSessionVerified(state.authProvider, state.user)) {
+    if (state.authStatus !== "logged-in" || !state.user || !isSessionVerified(state.authProvider, state.user)) {
       renderAuthGate();
       return;
     }
@@ -445,9 +548,15 @@ async function initSurvey() {
           state.authStep = "code";
           state.authMessage = "A one-time code is on its way to your email.";
         } else {
-          const result = await neonClient.auth.signIn.emailOtp({ email: state.pendingEmail, otp: form.elements.authCode.value.trim() });
+          const result = await neonClient.auth.signIn.emailOtp({
+            email: state.pendingEmail,
+            otp: form.elements.authCode.value.trim(),
+            name: "Participant"
+          });
           if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
+          if (!result.data?.user || !result.data?.session) throw new Error("We could not establish your verified email session.");
           await refreshSession();
+          saveDraft();
           state.authStep = "request";
           state.pendingEmail = "";
         }
@@ -925,7 +1034,7 @@ async function initSurvey() {
         contactMe: state.consent.contactMe
       };
       const submission = state.authProvider === "neon"
-        ? await neonClient.rpc("submit_voice_submission", {
+        ? await submitNeonVoice({
             p_industry: responseData.industry,
             p_role: responseData.role,
             p_occupation: responseData.occupation,
@@ -1074,8 +1183,83 @@ async function initSurvey() {
     }
   }
 
+  window.addEventListener("authchange", (event) => {
+    const next = event.detail;
+    state.user = next.status === "logged-in" ? next.user : null;
+    state.authProvider = next.status === "logged-in" ? next.provider : null;
+    state.authStatus = next.status;
+    if (next.status !== "logged-in") {
+      state.authStep = "request";
+      state.pendingEmail = "";
+      state.pendingPhone = "";
+    }
+    render();
+  });
   window.addEventListener("pagehide", stopRecording);
   render();
+}
+
+async function initProfile() {
+  const content = document.querySelector("#profileContent");
+  if (!content) return;
+
+  const renderProfile = (session) => {
+    content.replaceChildren();
+    if (session.status === "loading") {
+      content.append(el("div", "auth-card", "Loading your profile…"));
+      return;
+    }
+    if (session.status !== "logged-in" || !session.user) {
+      const wrapper = el("div", "auth-card");
+      wrapper.append(el("span", "section-kicker", "Signed out"));
+      wrapper.append(el("h2", null, "Your seat is waiting."));
+      wrapper.append(el("p", "section-lede", "Sign in with your email or phone to view your private profile and continue a saved draft."));
+      const card = el("div", "form-card");
+      const link = el("a", "btn primary", "Sign in to continue");
+      link.href = "survey.html";
+      card.append(link);
+      wrapper.append(card);
+      content.append(wrapper);
+      return;
+    }
+
+    const wrapper = el("div", "auth-card");
+    wrapper.append(el("span", "section-kicker", "Signed in"));
+    wrapper.append(el("h2", null, "Your private profile."));
+    wrapper.append(el("p", "section-lede", "This account connects your drafts and participation choices. Your identity is never shown on the Voices Wall."));
+    const card = el("div", "form-card profile-card");
+    card.append(el("h3", null, "Account details"));
+    const details = el("dl", "profile-details");
+    details.append(el("dt", null, session.provider === "better" ? "Phone" : "Email"));
+    details.append(el("dd", null, profileIdentity(session.provider, session.user)));
+    details.append(el("dt", null, "Status"));
+    details.append(el("dd", null, "Verified participant account"));
+    card.append(details);
+    const actions = el("div", "voice-actions");
+    const surveyLink = el("a", "btn primary", "Continue to the survey");
+    surveyLink.href = "survey.html";
+    const logout = el("button", "btn ghost", "Log out");
+    logout.type = "button";
+    logout.addEventListener("click", async () => {
+      logout.disabled = true;
+      try {
+        await signOutSession(session.provider);
+        window.location.href = "survey.html";
+      } catch (error) {
+        logout.disabled = false;
+        logout.textContent = error.message || "Log out";
+      }
+    });
+    actions.append(surveyLink, logout);
+    card.append(actions);
+    wrapper.append(card);
+    content.append(wrapper);
+  };
+
+  renderProfile({ status: "loading", user: null, provider: null });
+  const session = await getSession();
+  renderProfile(session);
+  window.addEventListener("authchange", (event) => renderProfile(event.detail));
 }
 
 async function initWall() {
