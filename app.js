@@ -1163,9 +1163,9 @@ async function initSurvey() {
   function renderSuccess() {
     content.replaceChildren();
     const wrapper = el("div", "completion-card");
-    wrapper.append(el("span", "section-kicker", "Thank you for adding your voice"));
+    wrapper.append(el("span", "section-kicker", "Thank you for sharing your voice"));
     wrapper.append(el("h2", null, "The table is a little wider now."));
-    wrapper.append(el("p", "section-lede", "Your perspective is ready for the Voices Wall. It may take a moment to appear as the wall refreshes."));
+    wrapper.append(el("p", "section-lede", "Your perspective has been received."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
     const edit = el("button", "btn ghost", "Edit your response");
@@ -1177,11 +1177,9 @@ async function initSurvey() {
       queueDraftSave();
       render();
     });
-    const wall = el("a", "btn primary", "Visit the Voices Wall");
-    wall.href = "wall.html";
-    const home = el("a", "btn ghost", "Return home");
+    const home = el("a", "btn primary", "Return home");
     home.href = "index.html";
-    actions.append(edit, wall, home);
+    actions.append(edit, home);
     card.append(actions);
     wrapper.append(card);
     content.append(wrapper);
