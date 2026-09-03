@@ -1,23 +1,14 @@
-import { createClient } from "https://esm.sh/@neondatabase/neon-js@0.6.2-beta";
 import { OpenStreetMapProvider } from "https://esm.sh/leaflet-geosearch@4.4.0";
 import { createElement, Mic, Pause, Play, Square } from "https://esm.sh/lucide@0.468.0";
 
-const NEON_AUTH_URL = "https://ep-muddy-sound-av88fs1z.neonauth.c-11.us-east-1.aws.neon.tech/neondb/auth";
-const NEON_DATA_API_URL = "https://ep-muddy-sound-av88fs1z.apirest.c-11.us-east-1.aws.neon.tech/neondb/rest/v1";
 const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
-const PASSWORD_MIN_LENGTH = 8;
-const DRAFT_STORAGE_PREFIX = "voices-at-the-table.survey-draft.v2";
-const NEON_SESSION_STORAGE_KEY = "voices-at-the-table.neon-session.v1";
-const AUTH_PROVIDER_STORAGE_KEY = "voices-at-the-table.auth-provider.v1";
-
-const neonClient = createClient({
-  auth: { url: NEON_AUTH_URL, allowAnonymous: true },
-  dataApi: { url: NEON_DATA_API_URL }
-});
+const DRAFT_STORAGE_KEY = "voices-at-the-table.anonymous-draft.v1";
+const AUTOSAVE_DELAY = 350;
 
 const page = document.body.dataset.page;
 let catalog;
+let activePlayback;
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -51,14 +42,12 @@ function iconButton(className, name, label, pressed = null) {
   return button;
 }
 
-const formatDuration = (seconds) => {
+function formatDuration(seconds) {
   if (!seconds) return "Written voice";
   const minutes = Math.floor(seconds / 60);
   const remaining = String(Math.floor(seconds % 60)).padStart(2, "0");
   return `${minutes}:${remaining}`;
-};
-
-let activePlayback;
+}
 
 function drawWaveform(canvas, values) {
   if (!canvas) return;
@@ -70,19 +59,17 @@ function drawWaveform(canvas, values) {
     canvas.height = height;
   }
   const context = canvas.getContext("2d");
-  if (!context) return;
+  if (!context || !values?.length) return;
   context.clearRect(0, 0, width, height);
-  if (!values?.length) return;
 
-  const style = getComputedStyle(canvas);
-  const baseColor = style.getPropertyValue("--waveform-base").trim() || "#000";
+  const baseColor = getComputedStyle(canvas).getPropertyValue("--waveform-base").trim() || "#000";
   const barCount = Math.max(12, Math.min(72, Math.floor(width / 6)));
   const gap = Math.max(1, Math.floor(width / (barCount * 4)));
   const barWidth = Math.max(2, Math.floor((width - gap * (barCount - 1)) / barCount));
-
   const amplitudeAt = (index) => values instanceof Uint8Array
     ? Math.abs(values[index] - 128) / 128
     : Math.abs(values[index]);
+
   context.lineCap = "round";
   for (let index = 0; index < barCount; index += 1) {
     const start = Math.floor(index * values.length / barCount);
@@ -120,7 +107,7 @@ function stopPlayback() {
   resetPlayback(playback);
 }
 
-async function playAudio(audioData, button, canvas, labels = {}) {
+async function playAudio(audioUrl, button, canvas, labels = {}) {
   const playLabel = labels.play || "Play recording";
   const pauseLabel = labels.pause || "Pause recording";
   if (activePlayback?.button === button) {
@@ -145,7 +132,7 @@ async function playAudio(audioData, button, canvas, labels = {}) {
   }
 
   stopPlayback();
-  const audio = new Audio(audioData);
+  const audio = new Audio(audioUrl);
   const playback = { audio, button, canvas, playLabel, pauseLabel, frame: null, audioContext: null, analyser: null, samples: null };
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (AudioContextClass && canvas) {
@@ -174,9 +161,7 @@ async function playAudio(audioData, button, canvas, labels = {}) {
     playback.frame = window.requestAnimationFrame(playback.paint);
   };
   activePlayback = playback;
-  const finish = () => {
-    resetPlayback(playback);
-  };
+  const finish = () => resetPlayback(playback);
   audio.addEventListener("ended", finish, { once: true });
   audio.addEventListener("error", finish, { once: true });
   button.classList.add("is-playing");
@@ -190,12 +175,12 @@ async function playAudio(audioData, button, canvas, labels = {}) {
   }
 }
 
-async function drawDecodedWaveform(canvas, audioData) {
+async function drawDecodedWaveform(canvas, audioUrl) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass || !canvas) return;
+  if (!AudioContextClass || !canvas || !audioUrl) return;
   let audioContext;
   try {
-    const response = await fetch(audioData);
+    const response = await fetch(audioUrl);
     const buffer = await response.arrayBuffer();
     audioContext = new AudioContextClass();
     const audioBuffer = await audioContext.decodeAudioData(buffer);
@@ -210,345 +195,21 @@ async function drawDecodedWaveform(canvas, audioData) {
   }
 }
 
-const currentUserFrom = (data) => data?.user || data?.session?.user || null;
-
-const isVerified = (user) => [
-  user?.phoneNumberVerified,
-  user?.phone_number_verified,
-  user?.emailVerified,
-  user?.email_verified,
-  user?.email?.verified,
-  user?.verified,
-  user?.isVerified
-].some((value) => value === true || value === "true");
-
-const isSessionVerified = (provider, user) => provider === "neon" || isVerified(user);
-
-const profileIdentity = (provider, user) => {
-  if (provider === "better" && user?.phoneNumber) return user.phoneNumber;
-  if (user?.email && !user.email.endsWith("@phone.invalid")) return user.email;
-  return user?.name || "Participant";
-};
-
-function getAuthStorages() {
-  const storages = [];
-  for (const name of ["sessionStorage", "localStorage"]) {
-    try {
-      if (window[name]) storages.push(window[name]);
-    } catch {
-      continue;
-    }
-  }
-  return storages;
-}
-
-function writeAuthStorage(key, value) {
-  for (const storage of getAuthStorages()) {
-    try {
-      storage.setItem(key, value);
-    } catch {
-      continue;
-    }
-  }
-}
-
-function readAuthStorage(key) {
-  for (const storage of getAuthStorages()) {
-    try {
-      const value = storage.getItem(key);
-      if (value) return value;
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function clearAuthStorage(key) {
-  for (const storage of getAuthStorages()) {
-    try {
-      storage.removeItem(key);
-    } catch {
-      continue;
-    }
-  }
-}
-
-function persistNeonSession(data, user = currentUserFrom(data)) {
-  const session = data?.session || (data?.token ? data : null);
-  const token = session?.access_token || session?.token;
-  if (!token || !user) return;
-  writeAuthStorage(NEON_SESSION_STORAGE_KEY, JSON.stringify({
-    session: { ...session, token },
-    user
-  }));
-}
-
-function readPersistedNeonSession() {
-  try {
-    const persisted = JSON.parse(readAuthStorage(NEON_SESSION_STORAGE_KEY) || "null");
-    const token = persisted?.session?.access_token || persisted?.session?.token;
-    if (!token || !persisted?.user) return null;
-    const tokenPayload = token.split(".")[1];
-    if (tokenPayload) {
-      const payload = JSON.parse(atob(tokenPayload.replace(/-/g, "+").replace(/_/g, "/")));
-      if (Number.isFinite(payload.exp) && payload.exp * 1000 <= Date.now()) {
-        clearPersistedNeonSession();
-        return null;
-      }
-    }
-    return persisted;
-  } catch {
-    return null;
-  }
-}
-
-function clearPersistedNeonSession() {
-  clearAuthStorage(NEON_SESSION_STORAGE_KEY);
-}
-
-function rememberAuthProvider(provider) {
-  writeAuthStorage(AUTH_PROVIDER_STORAGE_KEY, provider);
-}
-
-function readRememberedAuthProvider() {
-  const provider = readAuthStorage(AUTH_PROVIDER_STORAGE_KEY);
-  return provider === "better" || provider === "neon" ? provider : null;
-}
-
-function clearRememberedAuthProvider() {
-  clearAuthStorage(AUTH_PROVIDER_STORAGE_KEY);
-}
-
-async function signOutSession(provider) {
-  if (provider === "better") {
-    const response = await fetch("/api/auth/sign-out", {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: "{}"
-    });
-    if (!response.ok) throw new Error("We could not sign you out.");
-    return;
-  }
-  const result = await neonClient.auth.signOut();
-  if (result?.error) throw new Error(result.error.message || "We could not sign you out.");
-  clearPersistedNeonSession();
-}
-
-async function getNeonAccessToken() {
-  let session = null;
-  try {
-    const sessionResult = await neonClient.auth.getSession();
-    session = sessionResult.data?.session;
-  } catch {
-    session = null;
-  }
-  const token = session?.access_token || session?.token || readPersistedNeonSession()?.session?.token;
-  if (!token) throw new Error("Your email session expired. Please sign in again.");
-  return token;
-}
-
-async function callNeonRpc(name, body) {
-  const token = await getNeonAccessToken();
-  const response = await fetch(`${NEON_DATA_API_URL}/rpc/${name}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || "Your response could not be saved.");
-  return Array.isArray(payload) ? payload[0] : payload;
-}
-
-async function submitNeonVoice(body) {
-  return { data: await callNeonRpc("submit_voice_submission", body), error: null };
-}
-
-async function getNeonVoiceSubmission() {
-  return callNeonRpc("get_voice_submission", {});
-}
-
-async function updateNeonVoice(body) {
-  return { data: await callNeonRpc("update_voice_submission", body), error: null };
-}
-
-async function getJson(url) {
-  const response = await fetch(url, { credentials: "include", cache: "no-store" });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || "Request could not be completed.");
-  return payload;
-}
-
-async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || "Request could not be completed.");
-  return payload;
-}
-
-async function putJson(url, body) {
-  const response = await fetch(url, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || "Request could not be completed.");
-  return payload;
-}
-
-function validatePasswordPair(password, confirmation) {
-  if (password.length < PASSWORD_MIN_LENGTH) return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
-  if (password !== confirmation) return "The passwords do not match.";
-  return "";
-}
-
-async function requestNeonPasswordSetup(email) {
-  const result = await neonClient.auth.requestPasswordReset({
-    email,
-    redirectTo: new URL("password.html", window.location.href).href
-  });
-  if (result?.error) throw new Error(result.error.message || "We could not send a password setup link.");
-}
-
-async function resetNeonPassword(token, newPassword) {
-  const result = await neonClient.auth.resetPassword({ token, newPassword });
-  if (result?.error) throw new Error(result.error.message || "We could not set your password.");
-}
-
-async function setBetterPassword(newPassword) {
-  return postJson("/api/auth/set-password", { newPassword });
-}
-
 async function loadCatalog() {
   const response = await fetch(DATA_URL);
   if (!response.ok) throw new Error("Question catalog could not be loaded.");
   catalog = await response.json();
-  return catalog;
 }
 
-async function getSession() {
-  const rememberedProvider = readRememberedAuthProvider();
-  const providerOrder = rememberedProvider === "neon"
-    ? ["neon", "better"]
-    : ["better", "neon"];
-  let lastError = null;
-  let neonData = null;
-
-  for (const provider of providerOrder) {
-    if (provider === "better") {
-      try {
-        const response = await fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" });
-        const data = response.ok ? await response.json() : null;
-        const user = currentUserFrom(data);
-        if (data?.session && user) {
-          if (readRememberedAuthProvider() === "neon") continue;
-          rememberAuthProvider("better");
-          return { status: "logged-in", provider: "better", data, user, error: null };
-        }
-      } catch (error) {
-        lastError = error;
-      }
-      continue;
-    }
-
-    try {
-      const neonResult = await neonClient.auth.getSession();
-      neonData = neonResult.data;
-      const user = currentUserFrom(neonResult.data);
-      if (neonResult.data?.session && user) {
-        if (readRememberedAuthProvider() === "better") continue;
-        persistNeonSession(neonResult.data, user);
-        rememberAuthProvider("neon");
-        return { status: "logged-in", provider: "neon", data: neonResult.data, user, error: neonResult.error };
-      }
-      const persisted = readPersistedNeonSession();
-      if (persisted) {
-        if (readRememberedAuthProvider() === "better") continue;
-        rememberAuthProvider("neon");
-        return { status: "logged-in", provider: "neon", data: persisted, user: persisted.user, error: null };
-      }
-      lastError = neonResult.error;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  return { status: "logged-out", provider: null, data: neonData, user: null, error: lastError };
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "The request could not be completed.");
+  return payload;
 }
 
-async function initSiteAuth() {
-  const mount = document.querySelector("#siteAuth");
-  if (!mount) return;
-  let authState = { status: "loading", provider: null, user: null };
-
-  const renderSiteAuth = () => {
-    mount.replaceChildren();
-    if (authState.status === "loading") {
-      mount.append(el("span", "right", "Checking your seat…"));
-      return;
-    }
-    if (authState.status === "logged-in" && authState.user) {
-      const profile = el("a", "auth-profile-link", "Profile");
-      profile.href = "profile.html";
-      const identity = el("span", "site-auth-identity", profileIdentity(authState.provider, authState.user));
-      const logout = el("button", "text-button auth-logout", "Log out");
-      logout.type = "button";
-      logout.addEventListener("click", async () => {
-        logout.disabled = true;
-        try {
-          await signOutSession(authState.provider);
-          clearRememberedAuthProvider();
-          authState = { status: "logged-out", provider: null, user: null };
-          renderSiteAuth();
-          window.dispatchEvent(new CustomEvent("authchange", { detail: authState }));
-        } catch (error) {
-          logout.disabled = false;
-          logout.textContent = error.message || "Log out";
-        }
-      });
-      mount.append(profile, identity, logout);
-      return;
-    }
-    const status = el("span", "right", "Phase I / Personal perspectives");
-    const signIn = el("a", "auth-login-link", "Sign in");
-    signIn.href = "survey.html";
-    mount.append(status, signIn);
-  };
-
-  renderSiteAuth();
-  authState = await getSession();
-  renderSiteAuth();
-  window.dispatchEvent(new CustomEvent("authchange", { detail: authState }));
-}
-
-if (page === "survey") {
-  initSurvey();
-}
-
-if (page === "wall") {
-  initWall();
-}
-
-if (page === "profile") {
-  initProfile();
-}
-
-if (page === "password") {
-  initPassword();
-}
-
-initSiteAuth();
+if (page === "survey") initSurvey();
+if (page === "wall") initWall();
 
 async function initSurvey() {
   const appBar = document.querySelector("#surveyAppBar");
@@ -561,26 +222,27 @@ async function initSurvey() {
   const sessionStatus = document.querySelector("#surveySessionStatus");
   const industryName = document.querySelector("#surveyIndustryName");
   const industryDescriptor = document.querySelector("#surveyIndustryDescriptor");
+  const locationProvider = new OpenStreetMapProvider();
+  let locationSearchTimer;
+  let locationSearchRequest = 0;
 
-  let state = {
+  const state = {
+    draftId: "",
+    editToken: "",
     industry: null,
     step: 0,
     completedThrough: -1,
-    authMode: "email",
-    emailAuthMethod: "otp",
-    authStep: "request",
-    authMessage: "",
-    pendingEmail: "",
-    pendingPhone: "",
-    authProvider: null,
-    authStatus: "loading",
     errors: "",
-    user: null,
-    submissionId: null,
-    editing: false,
+    saveTimer: null,
+    saveChain: Promise.resolve(),
+    saveQueued: false,
+    saved: false,
     about: {
+      recordingConsent: false,
       displayMode: "anonymous",
       displayName: "",
+      contactEmail: "",
+      contactPhone: "",
       roles: [],
       occupation: "",
       occupationMode: "",
@@ -595,7 +257,6 @@ async function initSurvey() {
       useVoiceInRoundtable: false,
       contactMe: false
     },
-    saved: false,
     recorder: null,
     recordingQuestionId: null,
     recordingStarting: false,
@@ -608,202 +269,123 @@ async function initSurvey() {
 
   try {
     await loadCatalog();
-    await refreshSession();
-    restoreDraft();
-    if (state.authStatus === "logged-in") await loadExistingSubmission();
+    await restoreOrCreateDraft();
+    appBar.hidden = false;
+    workspace.hidden = false;
     render();
   } catch (error) {
-    content.textContent = error.message;
-    return;
+    content.textContent = error.message || "The survey could not be opened.";
   }
 
-  async function refreshSession() {
+  function draftHeaders(headers = {}) {
+    return { ...headers, "x-survey-token": state.editToken };
+  }
+
+  function readStoredDraft() {
     try {
-      const session = await getSession();
-      state.user = session.user;
-      state.authProvider = session.provider;
-      state.authStatus = session.status;
-      const identity = state.authProvider === "better" ? "phone" : "email";
-      sessionStatus.textContent = state.user
-        ? (isSessionVerified(state.authProvider, state.user) ? `Verified ${identity} · private profile` : `Verify your ${identity} to submit`)
-        : `Your ${identity} is private.`;
-    } catch {
-      state.user = null;
-      state.authProvider = null;
-      state.authStatus = "logged-out";
-      sessionStatus.textContent = "Sign in to save your response.";
-    }
-  }
-
-  function draftStorageKey() {
-    if (!state.user?.id || !state.authProvider) return "";
-    return `${DRAFT_STORAGE_PREFIX}.${state.authProvider}.${encodeURIComponent(String(state.user.id))}`;
-  }
-
-  function saveDraft() {
-    const key = draftStorageKey();
-    if (!key) return false;
-    if (!state.industry) return false;
-    const draft = {
-      version: 3,
-      industryId: state.industry.id,
-      step: state.step,
-      completedThrough: state.completedThrough,
-      submissionId: state.submissionId,
-      editing: state.editing,
-      about: state.about,
-      answers: state.answers,
-      openQuestions: state.openQuestions,
-      consent: state.consent
-    };
-    try {
-      localStorage.setItem(key, JSON.stringify(draft));
-      return true;
-    } catch {
-      try {
-        const withoutAudio = {
-          ...draft,
-          answers: Object.fromEntries(Object.entries(state.answers).map(([id, answer]) => [id, {
-            choice: answer.choice || "",
-            text: answer.text || "",
-            audioData: "",
-            audioMimeType: "",
-            durationSeconds: null
-          }]))
-        };
-        localStorage.setItem(key, JSON.stringify(withoutAudio));
-        return true;
-      } catch {
-        return false;
-      }
-    }
-  }
-
-  function restoreDraft() {
-    const key = draftStorageKey();
-    if (!key) return false;
-    try {
-      const draft = JSON.parse(localStorage.getItem(key) || "null");
-      const industry = catalog.industries.find((item) => item.id === draft?.industryId && item.status === "open");
-      if (!industry) return false;
-      state.industry = industry;
-      const savedStep = Number.isInteger(draft.step) ? draft.step : 0;
-      const migratedStep = draft.version >= 3 ? savedStep : savedStep === 1 ? 2 : savedStep === 2 ? 3 : savedStep;
-      state.step = Math.max(0, Math.min(migratedStep, getSteps().length - 1));
-      const savedCompletedThrough = Number(draft.completedThrough);
-      state.completedThrough = Number.isInteger(savedCompletedThrough)
-        ? Math.max(-1, Math.min(savedCompletedThrough, getSteps().length - 1))
-        : Math.max(-1, state.step - 1);
-      const draftSubmissionId = Number(draft.submissionId);
-      state.submissionId = draft.submissionId !== null && Number.isInteger(draftSubmissionId) && draftSubmissionId > 0
-        ? draftSubmissionId
+      const stored = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) || "null");
+      return /^[0-9a-f-]{36}$/i.test(stored?.draftId || "") && /^[A-Za-z0-9_-]{32,256}$/.test(stored?.editToken || "")
+        ? stored
         : null;
-      state.editing = Boolean(draft.editing || state.submissionId);
-      state.about = {
-        ...state.about,
-        ...(draft.about && typeof draft.about === "object" ? draft.about : {})
-      };
-      state.about.roles = (Array.isArray(state.about.roles)
-        ? state.about.roles
-        : typeof state.about.role === "string" && state.about.role ? [state.about.role] : [])
-        .filter((roleName) => typeof roleName === "string" && industry.roles.includes(roleName));
-      state.about.occupationQuery = state.about.occupationQuery || state.about.occupation || "";
-      state.about.occupationMode = state.about.occupationMode || (state.about.occupation ? "other" : "");
-      state.about.displayMode = state.about.displayMode === "named" ? "named" : "anonymous";
-      state.answers = Object.fromEntries(industry.questions.map((question) => {
-        const answer = draft.answers?.[question.id];
-        return [question.id, answer && typeof answer === "object" ? {
-          choice: typeof answer.choice === "string" ? answer.choice : "",
-          text: typeof answer.text === "string" ? answer.text : "",
-          audioData: typeof answer.audioData === "string" ? answer.audioData : "",
-          audioMimeType: typeof answer.audioMimeType === "string" ? answer.audioMimeType : "",
-          durationSeconds: Number.isInteger(answer.durationSeconds) ? answer.durationSeconds : null
-        } : {
-          choice: "",
-          text: "",
-          audioData: "",
-          audioMimeType: "",
-          durationSeconds: null
-        }];
-      }));
-      state.openQuestions = draft.openQuestions && typeof draft.openQuestions === "object" ? draft.openQuestions : {};
-      state.consent = {
-        ...state.consent,
-        ...(draft.consent && typeof draft.consent === "object" ? draft.consent : {})
-      };
-      return true;
     } catch {
-      return false;
+      return null;
     }
   }
 
-  async function loadExistingSubmission() {
-    try {
-      const submission = state.authProvider === "neon"
-        ? await getNeonVoiceSubmission()
-        : await getJson("/api/submissions");
-      if (!submission?.submission_id) return false;
-      const industry = catalog.industries.find((item) => item.label === submission.industry || item.id === submission.industry);
-      if (!industry) return false;
-      state.industry = industry;
-      state.submissionId = Number(submission.submission_id);
-      state.editing = true;
-      state.step = 1;
-      state.completedThrough = getSteps().length - 1;
-      state.about.displayMode = submission.is_anonymous ? "anonymous" : "named";
-      state.about.displayName = submission.display_name || "";
-      state.about.roles = typeof submission.role === "string" ? submission.role.split(/\s*,\s*/).filter(Boolean) : [];
-      state.about.occupation = submission.occupation || "";
-      state.about.occupationQuery = state.about.occupation;
-      state.about.occupationMode = (catalog.occupationOptions || []).some((option) => option.toLowerCase() === state.about.occupation.toLowerCase()) ? "catalog" : "other";
-      state.about.city = submission.city || "";
-      state.about.locationQuery = state.about.city;
-      sessionStatus.textContent = "Existing response loaded · ready to edit.";
-      state.answers = Object.fromEntries(industry.questions.map((question) => {
-        const answer = submission.answers?.[question.id];
-        return [question.id, answer && typeof answer === "object" ? {
-          choice: typeof answer.choice === "string" ? answer.choice : "",
-          text: typeof answer.text === "string" ? answer.text : "",
-          audioData: typeof answer.audioData === "string" ? answer.audioData : "",
-          audioMimeType: typeof answer.audioMimeType === "string" ? answer.audioMimeType : "",
-          durationSeconds: Number.isInteger(answer.durationSeconds) ? answer.durationSeconds : null
-        } : {
-          choice: "",
-          text: "",
-          audioData: "",
-          audioMimeType: "",
-          durationSeconds: null
-        }];
-      }));
-      state.openQuestions = Object.fromEntries(industry.questions.map((question) => [
-        question.id,
-        Boolean(state.answers[question.id]?.choice || state.answers[question.id]?.text || state.answers[question.id]?.audioData)
-      ]));
-      state.consent = {
-        roundtableInterest: Boolean(submission.roundtable_interest),
-        useVoiceInRoundtable: Boolean(submission.use_voice_in_roundtable),
-        contactMe: Boolean(submission.contact_me)
-      };
-      return true;
-    } catch (error) {
-      if (/function .*get_voice_submission|schema cache/i.test(error.message || "")) return false;
-      if (state.authProvider === "neon" && /401|403|unauthorized|forbidden|expired|session/i.test(error.message || "")) {
-        clearPersistedNeonSession();
-        state.user = null;
-        state.authProvider = null;
-        state.authStatus = "logged-out";
-        sessionStatus.textContent = "Sign in to continue editing your response.";
-        return false;
+  function storeDraftIdentity() {
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ draftId: state.draftId, editToken: state.editToken }));
+  }
+
+  function clearStoredDraft() {
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+  }
+
+  async function restoreOrCreateDraft() {
+    const stored = readStoredDraft();
+    if (stored) {
+      state.draftId = stored.draftId;
+      state.editToken = stored.editToken;
+      try {
+        const draft = await fetchJson(`/api/drafts/${state.draftId}`, {
+          headers: draftHeaders(),
+          cache: "no-store"
+        });
+        await applyDraft(draft);
+        sessionStatus.textContent = draft.submitted_at
+          ? "Your saved response is open for review."
+          : "Your response is saved automatically.";
+        return;
+      } catch {
+        clearStoredDraft();
       }
-      throw error;
     }
+
+    const created = await fetchJson("/api/drafts", { method: "POST" });
+    state.draftId = created.draftId;
+    state.editToken = created.editToken;
+    storeDraftIdentity();
+    sessionStatus.textContent = "Your response is saved automatically.";
   }
 
-  function clearDraft() {
-    const key = draftStorageKey();
-    if (!key) return;
+  async function applyDraft(draft) {
+    const industry = catalog.industries.find((item) => item.status === "open" && (item.label === draft.industry || item.id === draft.industry));
+    state.industry = industry || null;
+    const savedStep = Number(draft.current_step);
+    const savedCompletedThrough = Number(draft.completed_through);
+    state.step = Math.max(0, Math.min(Number.isInteger(savedStep) ? savedStep : 0, getSteps().length - 1));
+    state.completedThrough = Math.max(-1, Math.min(Number.isInteger(savedCompletedThrough) ? savedCompletedThrough : -1, getSteps().length - 1));
+    state.saved = Boolean(draft.submitted_at);
+    state.about = {
+      ...state.about,
+      recordingConsent: Boolean(draft.recording_consent),
+      displayMode: draft.is_anonymous === false ? "named" : "anonymous",
+      displayName: draft.display_name || "",
+      contactEmail: draft.contact_email || "",
+      contactPhone: draft.contact_phone || "",
+      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter(Boolean) : [],
+      occupation: draft.occupation || "",
+      occupationQuery: draft.occupation || "",
+      occupationMode: draft.occupation ? ((catalog.occupationOptions || []).some((option) => option.toLowerCase() === draft.occupation.toLowerCase()) ? "catalog" : "other") : "",
+      city: draft.city || "",
+      locationQuery: draft.city || ""
+    };
+    state.consent = {
+      roundtableInterest: Boolean(draft.roundtable_interest),
+      useVoiceInRoundtable: Boolean(draft.use_voice_in_roundtable),
+      contactMe: Boolean(draft.contact_me)
+    };
+
+    if (!state.industry) return;
+    const audioByQuestion = new Map((draft.audio || []).map((recording) => [recording.question_id, recording]));
+    state.answers = Object.fromEntries(state.industry.questions.map((question) => {
+      const answer = draft.answers?.[question.id] || {};
+      const recording = audioByQuestion.get(question.id);
+      return [question.id, {
+        choice: typeof answer.choice === "string" ? answer.choice : "",
+        text: typeof answer.text === "string" ? answer.text : "",
+        audioId: recording?.audio_id || "",
+        audioUrl: "",
+        audioMimeType: recording?.audio_mime_type || "",
+        durationSeconds: Number.isInteger(recording?.duration_seconds) ? recording.duration_seconds : null
+      }];
+    }));
+    state.openQuestions = Object.fromEntries(state.industry.questions.map((question) => {
+      const answer = state.answers[question.id];
+      return [question.id, Boolean(answer.choice || answer.text || answer.audioId)];
+    }));
+    await Promise.all(state.industry.questions.map((question) => restoreAudioUrl(question.id)));
+  }
+
+  async function restoreAudioUrl(questionId) {
+    const answer = state.answers[questionId];
+    if (!answer?.audioId || answer.audioUrl) return;
     try {
-      localStorage.removeItem(key);
+      const response = await fetch(`/api/drafts/${state.draftId}/audio/${encodeURIComponent(questionId)}`, {
+        headers: draftHeaders(),
+        cache: "no-store"
+      });
+      if (!response.ok) return;
+      answer.audioUrl = URL.createObjectURL(await response.blob());
     } catch {
       return;
     }
@@ -818,24 +400,93 @@ async function initSurvey() {
     ];
   }
 
+  function draftPayload() {
+    return {
+      recordingConsent: state.about.recordingConsent,
+      industry: state.industry?.label || "",
+      role: state.about.roles.join(", "),
+      occupation: state.about.occupation,
+      city: state.about.city,
+      displayName: state.about.displayMode === "named" ? state.about.displayName : "",
+      isAnonymous: state.about.displayMode !== "named",
+      contactEmail: state.about.contactEmail,
+      contactPhone: state.about.contactPhone,
+      answers: Object.fromEntries(Object.entries(state.answers).map(([questionId, answer]) => [questionId, {
+        choice: answer.choice || "",
+        text: answer.text || ""
+      }])),
+      roundtableInterest: state.consent.roundtableInterest,
+      useVoiceInRoundtable: state.consent.useVoiceInRoundtable,
+      contactMe: state.consent.contactMe,
+      currentStep: state.step,
+      completedThrough: state.completedThrough
+    };
+  }
+
+  function queueDraftSave() {
+    if (!state.draftId || !state.editToken || state.saved) return;
+    window.clearTimeout(state.saveTimer);
+    state.saveQueued = true;
+    sessionStatus.textContent = "Saving your response…";
+    state.saveTimer = window.setTimeout(() => {
+      state.saveTimer = null;
+      const payload = draftPayload();
+      state.saveQueued = false;
+      state.saveChain = state.saveChain
+        .catch(() => {})
+        .then(async () => {
+          await fetchJson(`/api/drafts/${state.draftId}`, {
+            method: "PUT",
+            headers: draftHeaders({ "content-type": "application/json" }),
+            body: JSON.stringify(payload)
+          });
+          sessionStatus.textContent = "Response saved automatically.";
+        })
+        .catch((error) => {
+          sessionStatus.textContent = error.message || "Your changes could not be saved yet.";
+        });
+    }, AUTOSAVE_DELAY);
+  }
+
+  async function flushDraftSave() {
+    if (state.saved) return;
+    window.clearTimeout(state.saveTimer);
+    if (state.saveTimer || state.saveQueued) {
+      state.saveTimer = null;
+      state.saveQueued = false;
+      const payload = draftPayload();
+      state.saveChain = state.saveChain
+        .catch(() => {})
+        .then(async () => {
+          await fetchJson(`/api/drafts/${state.draftId}`, {
+            method: "PUT",
+            headers: draftHeaders({ "content-type": "application/json" }),
+            body: JSON.stringify(payload)
+          });
+          sessionStatus.textContent = "Response saved automatically.";
+        });
+    }
+    await state.saveChain;
+  }
+
   function render() {
     const steps = getSteps();
-    const isAuthenticated = state.authStatus === "logged-in" && state.user && isSessionVerified(state.authProvider, state.user);
-    const completedSteps = isAuthenticated ? Math.max(0, state.completedThrough + 1) : 0;
+    const completedSteps = Math.max(0, state.completedThrough + 1);
     progress.replaceChildren();
     steps.forEach((item, index) => {
       const isCurrent = index === state.step;
       const isComplete = index <= state.completedThrough && !isCurrent;
       const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""}`);
       button.type = "button";
-      button.disabled = !isAuthenticated || (index > state.completedThrough && index !== state.step);
+      button.disabled = index > state.completedThrough && index !== state.step;
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         if (index <= state.completedThrough) {
           syncCurrentStep();
+          await flushDraftSave();
           state.step = index;
           state.errors = "";
-          saveDraft();
+          queueDraftSave();
           render();
         }
       });
@@ -844,295 +495,42 @@ async function initSurvey() {
     stepCount.textContent = `Step ${state.step + 1} of ${steps.length}`;
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
-    appBar.hidden = !isAuthenticated;
-    workspace.hidden = false;
-    workspace.classList.toggle("is-auth-gate", !isAuthenticated);
     industryName.textContent = state.industry?.label || "Your survey";
     industryDescriptor.textContent = state.industry?.descriptor || "Start with a little context, then share your perspective.";
     content.replaceChildren();
-    if (!isAuthenticated) {
-      renderAuthGate();
+    if (state.saved) {
+      renderSuccess();
       return;
     }
     const step = steps[state.step];
     if (step.id === "about") renderAbout();
     else if (step.id === "details") renderDetails();
     else if (step.id === "questions") renderQuestions();
-    else renderConsent();
-  }
-
-  function renderAuthGate() {
-    const wrapper = el("div", "auth-card");
-    const isWaitingForCode = state.authStep === "code";
-    const isEmail = state.authMode === "email";
-    const title = state.user
-      ? "Verify your email to continue."
-      : isWaitingForCode
-        ? `Enter your ${isEmail ? "email" : "phone"} code.`
-        : "Log in to share your voice.";
-    wrapper.append(el("h2", null, title));
-    const intro = state.user
-      ? "We sent a verification link to your inbox. Verify it, then return here to continue your response."
-      : isWaitingForCode
-        ? `We sent a one-time code to ${isEmail ? state.pendingEmail : state.pendingPhone}.`
-        : "Use your email or phone to continue. No password is needed, and your contact details stay private.";
-    wrapper.append(el("p", "section-lede", intro));
-    const card = el("div", "form-card");
-    if (state.user) {
-      card.append(el("p", null, state.user.email || "Your email address"));
-      const actions = el("div", "voice-actions");
-      const resend = el("button", "btn primary small", "Send verification email");
-      const refresh = el("button", "btn ghost small", "I verified — refresh");
-      resend.type = refresh.type = "button";
-      resend.addEventListener("click", sendVerification);
-      refresh.addEventListener("click", async () => {
-        await refreshSession();
-        render();
-      });
-      actions.append(resend, refresh);
-      card.append(actions);
-      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
-    } else {
-      const form = document.createElement("form");
-      form.id = "authForm";
-      const grid = el("div", "field-grid");
-      if (isWaitingForCode) {
-        const codeField = textField(`6-digit ${isEmail ? "email" : "phone"} code`, "authCode", "123456", true);
-        const codeInput = codeField.querySelector("input");
-        codeInput.inputMode = "numeric";
-        codeInput.autocomplete = "one-time-code";
-        codeInput.maxLength = 6;
-        grid.append(codeField);
-      } else if (isEmail) {
-        grid.append(textField("Email", "authEmail", "you@example.com", true, "email"));
-        if (state.emailAuthMethod === "password") {
-          const passwordField = textField("Password", "authPassword", "Your password", true, "password");
-          passwordField.querySelector("input").autocomplete = "current-password";
-          grid.append(passwordField);
-        }
-      } else {
-        const phoneField = textField("Phone number", "authPhone", "+1 555 123 4567", true, "tel");
-        phoneField.querySelector("input").pattern = "\\+[1-9]\\d{1,14}";
-        grid.append(phoneField);
-        grid.append(el("small", "auth-code-note", "Use international format, for example +15551234567."));
-      }
-      const actions = el("div", "form-actions");
-      const submit = el("button", "btn primary next-btn", isWaitingForCode ? "Verify code" : state.emailAuthMethod === "password" && isEmail ? "Sign in with password" : isEmail ? "Email me a code" : "Text me a code");
-      submit.type = "submit";
-      actions.append(submit);
-      form.append(grid, actions);
-      form.addEventListener("submit", handleAuth);
-      card.append(form);
-      if (state.authMessage) card.append(el("p", "auth-message", state.authMessage));
-      if (isEmail && !isWaitingForCode) {
-        const methodSwitcher = el("p", "auth-switch");
-        const methodButton = el("button", "text-button", state.emailAuthMethod === "password" ? "Use an email code instead" : "Use a password instead");
-        methodButton.type = "button";
-        methodButton.addEventListener("click", () => {
-          state.emailAuthMethod = state.emailAuthMethod === "password" ? "otp" : "password";
-          state.authStep = "request";
-          state.authMessage = "";
-          render();
-        });
-        methodSwitcher.append(methodButton);
-        card.append(methodSwitcher);
-      }
-      const switcher = el("p", "auth-switch");
-      switcher.append(document.createTextNode(isEmail ? "Prefer phone signup? " : "Prefer email? "));
-      const switchButton = el("button", "text-button", isEmail ? "Use phone instead" : "Use email instead");
-      switchButton.type = "button";
-      switchButton.addEventListener("click", () => {
-        state.authMode = isEmail ? "phone" : "email";
-        state.emailAuthMethod = "otp";
-        state.authStep = "request";
-        state.authMessage = "";
-        render();
-      });
-      switcher.append(switchButton);
-      card.append(switcher);
-      if (isWaitingForCode) {
-        const resendLine = el("p", "auth-switch");
-        const resendButton = el("button", "text-button", "Send a new code");
-        resendButton.type = "button";
-        resendButton.addEventListener("click", async () => {
-          resendButton.disabled = true;
-          try {
-            if (isEmail) {
-              const result = await neonClient.auth.emailOtp.sendVerificationOtp({
-                email: state.pendingEmail,
-                type: "sign-in"
-              });
-              if (result.error) throw new Error(result.error.message || "We could not send a new email code.");
-            } else {
-              await postJson("/api/auth/phone-number/send-otp", {
-                phoneNumber: state.pendingPhone
-              });
-            }
-            state.authMessage = "A new code was sent. Use the most recent code.";
-          } catch (error) {
-            state.authMessage = error.message || "We could not send a new code.";
-          }
-          render();
-        });
-        resendLine.append(resendButton);
-        card.append(resendLine);
-
-        const change = el("p", "auth-switch");
-        const changeButton = el("button", "text-button", isEmail ? "Use a different address" : "Use a different number");
-        changeButton.type = "button";
-        changeButton.addEventListener("click", () => {
-          state.authStep = "request";
-          state.authMessage = "";
-          render();
-        });
-        change.append(changeButton);
-        card.append(change);
-      }
-    }
-    wrapper.append(card);
-    content.append(wrapper);
-  }
-
-  function textField(label, id, placeholder, required, type = "text") {
-    const field = el("div", "field");
-    const labelNode = document.createElement("label");
-    labelNode.htmlFor = id;
-    labelNode.textContent = label;
-    const input = document.createElement("input");
-    input.id = id;
-    input.name = id;
-    input.type = type;
-    input.placeholder = placeholder;
-    input.required = required;
-    field.append(labelNode, input);
-    return field;
-  }
-
-  async function handleAuth(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    state.authMessage = "";
-    try {
-      if (state.authMode === "email") {
-        if (state.emailAuthMethod === "password") {
-          const email = form.elements.authEmail.value.trim();
-          const result = await neonClient.auth.signIn.email({
-            email,
-            password: form.elements.authPassword.value
-          });
-          if (result.error) throw new Error(result.error.message || "That email or password was not accepted.");
-          persistNeonSession(result.data);
-          rememberAuthProvider("neon");
-          await refreshSession();
-          if (state.authStatus !== "logged-in" || !state.user) throw new Error("We could not establish your password session.");
-          restoreDraft();
-          await loadExistingSubmission();
-          saveDraft();
-        } else if (state.authStep === "request") {
-          const email = form.elements.authEmail.value.trim();
-          const result = await neonClient.auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
-          if (result.error) throw new Error(result.error.message || "We could not send an email code.");
-          state.pendingEmail = email;
-          state.authStep = "code";
-          state.authMessage = "A one-time code is on its way to your email.";
-        } else {
-          const result = await neonClient.auth.signIn.emailOtp({
-            email: state.pendingEmail,
-            otp: form.elements.authCode.value.trim(),
-            name: "Participant"
-          });
-          if (result.error) throw new Error(result.error.message || "That email code was not accepted.");
-          persistNeonSession(result.data);
-          rememberAuthProvider("neon");
-          await refreshSession();
-          if (state.authStatus !== "logged-in" || !state.user) throw new Error("We could not establish your verified email session.");
-          restoreDraft();
-          await loadExistingSubmission();
-          saveDraft();
-          state.authStep = "request";
-          state.pendingEmail = "";
-        }
-      } else if (state.authStep === "request") {
-        const phoneNumber = form.elements.authPhone.value.trim();
-        await postJson("/api/auth/phone-number/send-otp", { phoneNumber });
-        state.pendingPhone = phoneNumber;
-        state.authStep = "code";
-        state.authMessage = "A one-time code is on its way to your phone.";
-      } else {
-        await postJson("/api/auth/phone-number/verify", {
-          phoneNumber: state.pendingPhone,
-          code: form.elements.authCode.value.trim()
-        });
-        rememberAuthProvider("better");
-        await refreshSession();
-        restoreDraft();
-        await loadExistingSubmission();
-        state.authStep = "request";
-      }
-      render();
-    } catch (error) {
-      const errorMessage = error.message || "Authentication failed. Please try again.";
-      state.authMessage = state.authStep === "code" && /invalid otp|otp expired|too many attempts/i.test(errorMessage)
-        ? "That code is invalid or expired. Use the most recent code, or send a new one."
-        : errorMessage === "Request could not be completed." && state.authMode === "phone" && state.authStep === "request"
-          ? "Twilio needs an approved compliance profile before it can text an unverified number. For testing, add your number as a Verified Caller ID in Twilio."
-          : errorMessage;
-      render();
-    }
-  }
-
-  async function sendVerification() {
-    const email = state.user?.email || state.pendingEmail;
-    if (!email) return;
-    try {
-      const result = await neonClient.auth.sendVerificationEmail({ email, callbackURL: window.location.href });
-      state.authMessage = result?.error?.message || "Verification email sent. Check your inbox, then return here.";
-    } catch (error) {
-      state.authMessage = error.message || "We could not send the verification email yet.";
-    }
-    render();
-  }
-
-  const locationProvider = new OpenStreetMapProvider();
-  let locationSearchTimer;
-  let locationSearchRequest = 0;
-
-  function isQuestionComplete(answer) {
-    return Boolean(answer?.choice && (answer.text?.trim() || answer.audioData));
-  }
-
-  function saveQuestionAnswer(questionId, updates) {
-    const answer = {
-      choice: "",
-      text: "",
-      audioData: "",
-      audioMimeType: "",
-      durationSeconds: null,
-      ...state.answers[questionId],
-      ...updates
-    };
-    state.answers[questionId] = answer;
-    const saved = saveDraft();
-    if (saved) sessionStatus.textContent = isQuestionComplete(answer)
-      ? "Completed response saved on this device."
-      : "Draft saved on this device.";
-  }
-
-  function completedAnswers() {
-    return Object.fromEntries(
-      state.industry.questions
-        .map((question) => [question.id, state.answers[question.id]])
-        .filter(([, answer]) => isQuestionComplete(answer))
-    );
+    else renderParticipation();
   }
 
   function renderAbout() {
     content.append(el("span", "section-kicker", "01 / About"));
-    content.append(el("h2", null, "How should we name you?"));
-    content.append(el("p", "section-lede", state.editing ? "Your saved response is loaded. Update any detail before moving through the questions again." : "Choose how your perspective should appear on the Voices Wall. Your verified contact information stays private."));
+    content.append(el("h2", null, "Before we begin."));
+    content.append(el("p", "section-lede", "Your response is saved automatically as you go. You can remain anonymous on the Voices Wall and optionally leave contact information for project updates."));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Your name on the wall"));
-    card.append(el("p", "card-intro", "You can stay anonymous or choose the name people should see."));
+    card.append(el("h3", null, "Recording consent"));
+    const consentField = el("label", "field full");
+    const consentRow = el("span", "consent-row");
+    const consentInput = document.createElement("input");
+    consentInput.type = "checkbox";
+    consentInput.name = "recordingConsent";
+    consentInput.checked = state.about.recordingConsent;
+    consentInput.required = true;
+    consentInput.addEventListener("change", () => {
+      state.about.recordingConsent = consentInput.checked;
+      state.errors = "";
+      queueDraftSave();
+    });
+    consentRow.append(consentInput, document.createTextNode("I understand that the responses I enter, including any voice recording, will be stored as part of this survey."));
+    consentField.append(consentRow);
+    card.append(consentField);
+
     const grid = el("div", "field-grid");
     const displayMode = el("fieldset", "field full");
     displayMode.append(el("legend", null, "How should your voice be named on the wall?"));
@@ -1151,7 +549,7 @@ async function initSurvey() {
       wrapper.append(input, labelNode);
       input.addEventListener("change", () => {
         state.about.displayMode = value;
-        saveDraft();
+        queueDraftSave();
         render();
       });
       displayChoices.append(wrapper);
@@ -1162,8 +560,18 @@ async function initSurvey() {
       grid.append(textFieldFromState("What should we call you on the wall?", "displayName", "displayName", state.about.displayName, true, "Your name or a name you choose"));
     }
     card.append(grid);
-    appendFormActions(card);
-    content.append(card);
+
+    const contactCard = el("div", "form-card");
+    contactCard.append(el("h3", null, "Stay in the loop"));
+    contactCard.append(el("p", "card-intro", "Optional. Leave an email address or phone number if you would like project updates. This information is private and never appears on the Voices Wall."));
+    const contactGrid = el("div", "field-grid");
+    contactGrid.append(
+      textFieldFromState("Email address", "contactEmail", "contactEmail", state.about.contactEmail, false, "you@example.com", "email"),
+      textFieldFromState("Phone number", "contactPhone", "contactPhone", state.about.contactPhone, false, "+1 555 123 4567", "tel")
+    );
+    contactCard.append(contactGrid);
+    appendFormActions(contactCard);
+    content.append(card, contactCard);
   }
 
   function renderDetails() {
@@ -1216,7 +624,7 @@ async function initSurvey() {
         input.addEventListener("change", () => {
           state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
           state.errors = "";
-          saveDraft();
+          queueDraftSave();
         });
         roleChoices.append(wrapper);
       });
@@ -1224,18 +632,25 @@ async function initSurvey() {
       roleChoices.append(el("p", "field-note", "Choose an industry to see the roles in that room."));
     }
     roleField.append(roleChoices);
-    grid.append(roleField);
-    grid.append(occupationFieldFromState());
-    grid.append(locationFieldFromState("Where are you joining from?", "city", state.about.city));
+    grid.append(roleField, occupationFieldFromState(), locationFieldFromState("Where are you joining from?", "city", state.about.city));
     card.append(grid);
     appendFormActions(card);
     content.append(card);
   }
 
-  function selectIndustry(industryId) {
+  async function selectIndustry(industryId) {
     const industry = catalog.industries.find((item) => item.id === industryId && item.status === "open");
     if (!industry) return;
     const changed = state.industry?.id !== industry.id;
+    if (changed) {
+      try {
+        await clearRecordings();
+      } catch (error) {
+        state.errors = error.message || "Existing recordings could not be cleared.";
+        render();
+        return;
+      }
+    }
     state.industry = industry;
     state.about.roles = state.about.roles.filter((roleName) => industry.roles.includes(roleName));
     if (changed) {
@@ -1244,11 +659,26 @@ async function initSurvey() {
       state.completedThrough = Math.min(state.completedThrough, state.step - 1);
     }
     state.errors = "";
-    saveDraft();
+    queueDraftSave();
     render();
   }
 
-  function textFieldFromState(label, id, stateKey, value, required, placeholder = "") {
+  async function clearRecordings() {
+    const recordings = Object.entries(state.answers)
+      .filter(([, answer]) => answer?.audioId)
+      .map(([questionId, answer]) => ({ questionId, answer }));
+    await Promise.all(recordings.map(async ({ questionId, answer }) => {
+      const response = await fetch(`/api/drafts/${state.draftId}/audio/${encodeURIComponent(questionId)}`, {
+        method: "DELETE",
+        headers: draftHeaders()
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Existing recordings could not be cleared.");
+      if (answer.audioUrl?.startsWith("blob:")) URL.revokeObjectURL(answer.audioUrl);
+    }));
+  }
+
+  function textFieldFromState(label, id, stateKey, value, required, placeholder = "", type = "text") {
     const field = el("div", "field");
     const labelNode = document.createElement("label");
     labelNode.htmlFor = id;
@@ -1256,13 +686,13 @@ async function initSurvey() {
     const input = document.createElement("input");
     input.id = id;
     input.name = id;
-    input.type = "text";
+    input.type = type;
     input.placeholder = placeholder;
     input.value = value || "";
     input.required = required;
     input.addEventListener("input", () => {
       state.about[stateKey] = input.value.trim();
-      saveDraft();
+      queueDraftSave();
     });
     field.append(labelNode, input);
     return field;
@@ -1300,7 +730,7 @@ async function initSurvey() {
       results.replaceChildren();
       results.hidden = true;
       state.errors = "";
-      saveDraft();
+      queueDraftSave();
     };
 
     const showResults = () => {
@@ -1324,9 +754,7 @@ async function initSurvey() {
         other.addEventListener("click", () => chooseOccupation(query, "other"));
         results.append(other);
       }
-      if (!results.children.length) {
-        results.append(el("small", "location-empty", "Start typing to search the list."));
-      }
+      if (!results.children.length) results.append(el("small", "location-empty", "Start typing to search the list."));
       results.hidden = false;
     };
 
@@ -1338,15 +766,11 @@ async function initSurvey() {
       state.about.occupationMode = exact ? "catalog" : query ? "other" : "";
       input.dataset.selected = exact ? "true" : "false";
       state.errors = "";
-      saveDraft();
+      queueDraftSave();
       showResults();
     });
-    input.addEventListener("focus", () => {
-      showResults();
-    });
-    input.addEventListener("blur", () => {
-      window.setTimeout(() => { results.hidden = true; }, 150);
-    });
+    input.addEventListener("focus", showResults);
+    input.addEventListener("blur", () => window.setTimeout(() => { results.hidden = true; }, 150));
     field.append(labelNode, input, status, results);
     return field;
   }
@@ -1394,8 +818,7 @@ async function initSurvey() {
           results.replaceChildren();
           results.hidden = true;
           state.errors = "";
-          saveDraft();
-          sessionStatus.textContent = "Your location is saved on this device.";
+          queueDraftSave();
         });
         results.append(option);
       });
@@ -1406,7 +829,7 @@ async function initSurvey() {
       const query = input.value.trim();
       state.about.locationQuery = query;
       state.about.city = "";
-      saveDraft();
+      queueDraftSave();
       input.dataset.selected = "false";
       state.errors = "";
       window.clearTimeout(locationSearchTimer);
@@ -1440,12 +863,8 @@ async function initSurvey() {
       }, 300);
     });
 
-    input.addEventListener("focus", () => {
-      if (results.children.length) results.hidden = false;
-    });
-    input.addEventListener("blur", () => {
-      window.setTimeout(() => { results.hidden = true; }, 150);
-    });
+    input.addEventListener("focus", () => { if (results.children.length) results.hidden = false; });
+    input.addEventListener("blur", () => window.setTimeout(() => { results.hidden = true; }, 150));
     field.append(labelNode, input, status, results);
     return field;
   }
@@ -1455,115 +874,134 @@ async function initSurvey() {
     content.append(el("h2", null, "Tell us what you are noticing."));
     content.append(el("p", "section-lede", "Open each prompt in the order that feels right. Choose a quick starting point, then leave a voice note or write instead."));
     const list = el("div", "question-list");
-    state.industry.questions.forEach((question, index) => {
-      const answer = state.answers[question.id] || { choice: "", text: "", audioData: "", audioMimeType: "", durationSeconds: null };
-      const hasSavedAnswer = Boolean(answer.choice || answer.text || answer.audioData);
-      const card = el("article", `question-card ${state.openQuestions[question.id] ? "is-open" : ""}`);
-      const toggle = el("button", "question-toggle");
-      toggle.type = "button";
-      toggle.setAttribute("aria-expanded", String(Boolean(state.openQuestions[question.id])));
-      toggle.setAttribute("aria-controls", `question-panel-${question.id}`);
-      toggle.append(el("span", "question-number", String(index + 1).padStart(2, "0")), el("span", "question-toggle-copy", question.title), hasSavedAnswer ? el("span", "question-toggle-status", "Saved") : el("span", "question-toggle-status"), el("span", "question-toggle-icon", state.openQuestions[question.id] ? "−" : "+"));
-      toggle.addEventListener("click", () => {
-        state.openQuestions[question.id] = !state.openQuestions[question.id];
-        render();
-      });
-      card.append(toggle);
-      const panel = el("div", "question-panel");
-      panel.id = `question-panel-${question.id}`;
-      panel.hidden = !state.openQuestions[question.id];
-      panel.append(el("p", "question-prompt", question.prompt));
-      const field = el("fieldset", "field question-choice");
-      field.append(el("legend", null, "What feels closest right now?"));
-      const choices = el("div", "choice-grid");
-      const options = catalog.questionOptions[question.id] || question.options || [];
-      options.forEach((option, optionIndex) => {
-        const wrapper = el("div", "choice");
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.name = `${question.id}-choice`;
-        input.id = `${question.id}-choice-${optionIndex}`;
-        input.value = option;
-        input.checked = answer.choice === option;
-        const label = document.createElement("label");
-        label.htmlFor = input.id;
-        label.textContent = option;
-        wrapper.append(input, label);
-        input.addEventListener("change", () => {
-          saveQuestionAnswer(question.id, { choice: option });
+    if (!state.industry) {
+      list.append(el("p", "field-note", "Choose an industry in Details to see the prompts."));
+    } else {
+      state.industry.questions.forEach((question, index) => {
+        const answer = state.answers[question.id] || emptyAnswer();
+        const hasSavedAnswer = Boolean(answer.choice || answer.text || answer.audioId);
+        const card = el("article", `question-card ${state.openQuestions[question.id] ? "is-open" : ""}`);
+        const toggle = el("button", "question-toggle");
+        toggle.type = "button";
+        toggle.setAttribute("aria-expanded", String(Boolean(state.openQuestions[question.id])));
+        toggle.setAttribute("aria-controls", `question-panel-${question.id}`);
+        toggle.append(
+          el("span", "question-number", String(index + 1).padStart(2, "0")),
+          el("span", "question-toggle-copy", question.title),
+          hasSavedAnswer ? el("span", "question-toggle-status", "Saved") : el("span", "question-toggle-status"),
+          el("span", "question-toggle-icon", state.openQuestions[question.id] ? "−" : "+")
+        );
+        toggle.addEventListener("click", () => {
+          state.openQuestions[question.id] = !state.openQuestions[question.id];
+          render();
         });
-        choices.append(wrapper);
-      });
-      field.append(choices);
-      panel.append(field);
-      const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
-      const voicePanel = el("div", "voice-panel question-voice-panel");
-      const copy = el("div", "voice-copy");
-      copy.append(el("strong", null, answer.audioData ? "Voice note captured" : "Make this one heard"));
-      copy.append(el("p", null, answer.audioData ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
-      const audioRow = el("div", "voice-audio-row");
-      const actions = el("div", "voice-actions");
-      const recordButton = iconButton("btn primary small", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
-      recordButton.addEventListener("click", () => {
-        syncCurrentStep();
-        if (state.recorder) {
-          stopRecording();
-          return;
+        card.append(toggle);
+        const panel = el("div", "question-panel");
+        panel.id = `question-panel-${question.id}`;
+        panel.hidden = !state.openQuestions[question.id];
+        panel.append(el("p", "question-prompt", question.prompt));
+        const field = el("fieldset", "field question-choice");
+        field.append(el("legend", null, "What feels closest right now?"));
+        const choices = el("div", "choice-grid");
+        const options = catalog.questionOptions[question.id] || question.options || [];
+        options.forEach((option, optionIndex) => {
+          const wrapper = el("div", "choice");
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.name = `${question.id}-choice`;
+          input.id = `${question.id}-choice-${optionIndex}`;
+          input.value = option;
+          input.checked = answer.choice === option;
+          const label = document.createElement("label");
+          label.htmlFor = input.id;
+          label.textContent = option;
+          wrapper.append(input, label);
+          input.addEventListener("change", () => saveQuestionAnswer(question.id, { choice: option }));
+          choices.append(wrapper);
+        });
+        field.append(choices);
+        panel.append(field);
+
+        const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
+        const voicePanel = el("div", "voice-panel question-voice-panel");
+        const copy = el("div", "voice-copy");
+        copy.append(el("strong", null, answer.audioId ? "Voice note captured" : "Make this one heard"));
+        copy.append(el("p", null, answer.audioId ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
+        const audioRow = el("div", "voice-audio-row");
+        const actions = el("div", "voice-actions");
+        const recordButton = iconButton("btn primary small", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
+        recordButton.addEventListener("click", () => {
+          syncCurrentStep();
+          if (state.recorder) {
+            stopRecording();
+            return;
+          }
+          startRecording(question.id);
+        });
+        actions.append(recordButton);
+        let waveform;
+        if (isRecording || answer.audioId) {
+          waveform = document.createElement("canvas");
+          waveform.className = "voice-waveform live-waveform";
+          waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
+          waveform.height = 64;
+          waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
+          if (answer.audioUrl && !isRecording) drawDecodedWaveform(waveform, answer.audioUrl);
         }
-        startRecording(question.id);
-      });
-      actions.append(recordButton);
-      let waveform;
-      if (isRecording || answer.audioData) {
-        waveform = document.createElement("canvas");
-        waveform.className = "voice-waveform live-waveform";
-        waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
-        waveform.height = 64;
-        waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
-        if (answer.audioData && !isRecording) {
-          drawDecodedWaveform(waveform, answer.audioData);
+        if (answer.audioUrl) {
+          const playButton = iconButton("btn ghost small", "play", "Play recording", false);
+          playButton.addEventListener("click", () => playAudio(answer.audioUrl, playButton, waveform));
+          actions.append(playButton);
         }
-      }
-      if (answer.audioData) {
-        const playButton = iconButton("btn ghost small", "play", "Play recording", false);
-        playButton.addEventListener("click", () => playAudio(answer.audioData, playButton, waveform, {
-          play: "Play recording",
-          pause: "Pause recording"
-        }));
-        actions.append(playButton);
-      }
-      audioRow.append(actions);
-      if (waveform) audioRow.append(waveform);
-      copy.append(audioRow);
-      voicePanel.append(copy);
-      panel.append(voicePanel);
-      const textField = el("div", "field question-text-response");
-      const textLabel = document.createElement("label");
-      textLabel.htmlFor = `${question.id}-text`;
-      textLabel.textContent = "Or enter text instead";
-      const text = document.createElement("textarea");
-      text.id = `${question.id}-text`;
-      text.name = `${question.id}-text`;
-      text.placeholder = question.placeholder || "Write what comes to mind.";
-      text.value = answer.text || "";
-      text.addEventListener("input", () => {
-        saveQuestionAnswer(question.id, { text: text.value.trim() });
+        audioRow.append(actions);
+        if (waveform) audioRow.append(waveform);
+        copy.append(audioRow);
+        voicePanel.append(copy);
+        panel.append(voicePanel);
+
+        const textField = el("div", "field question-text-response");
+        const textLabel = document.createElement("label");
+        textLabel.htmlFor = `${question.id}-text`;
+        textLabel.textContent = "Or enter text instead";
+        const text = document.createElement("textarea");
+        text.id = `${question.id}-text`;
+        text.name = `${question.id}-text`;
+        text.placeholder = question.placeholder || "Write what comes to mind.";
+        text.value = answer.text || "";
+        text.addEventListener("input", () => saveQuestionAnswer(question.id, { text: text.value.trim() }));
+        textField.append(textLabel, text);
+        panel.append(textField);
+        card.append(panel);
+        list.append(card);
       });
-      textField.append(textLabel, text);
-      panel.append(textField);
-      card.append(panel);
-      list.append(card);
-    });
+    }
     content.append(list);
     appendFormActions(content);
   }
 
-  function renderConsent() {
+  function emptyAnswer() {
+    return { choice: "", text: "", audioId: "", audioUrl: "", audioMimeType: "", durationSeconds: null };
+  }
+
+  function saveQuestionAnswer(questionId, updates) {
+    state.answers[questionId] = { ...emptyAnswer(), ...state.answers[questionId], ...updates };
+    queueDraftSave();
+  }
+
+  function completedAnswers() {
+    return Object.fromEntries(
+      state.industry.questions
+        .map((question) => [question.id, state.answers[question.id]])
+        .filter(([, answer]) => Boolean(answer?.choice && (answer.text?.trim() || answer.audioId)))
+    );
+  }
+
+  function renderParticipation() {
     content.append(el("span", "section-kicker", "04 / Participation"));
     content.append(el("h2", null, "Participation"));
-    content.append(el("p", "section-lede", "Choose how you would like to stay connected. Publishing your response is included with submission."));
+    content.append(el("p", "section-lede", "Choose how you would like to stay connected. Your completed response will be added to the Voices Wall."));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Roundtable + consent"));
+    card.append(el("h3", null, "Roundtable + contact"));
     const list = el("div", "field-grid");
     catalog.consent.forEach((consent) => {
       const field = el("label", "field full");
@@ -1572,10 +1010,9 @@ async function initSurvey() {
       input.type = "checkbox";
       input.name = consent.id;
       input.checked = state.consent[consent.id];
-      input.required = consent.required;
       input.addEventListener("change", () => {
         state.consent[consent.id] = input.checked;
-        saveDraft();
+        queueDraftSave();
       });
       row.append(input, document.createTextNode(consent.label));
       field.append(row);
@@ -1583,7 +1020,7 @@ async function initSurvey() {
     });
     card.append(list);
     appendFormActions(card);
-    card.append(el("p", "submission-consent", "By submitting, I give permission for my written response and voice note to appear on the Voices Wall"));
+    card.append(el("p", "submission-consent", "By submitting, I give permission for my written response and voice note to appear on the Voices Wall."));
     content.append(card);
   }
 
@@ -1592,10 +1029,18 @@ async function initSurvey() {
     if (state.step > 0) {
       const back = el("button", "back-btn", "Back");
       back.type = "button";
-      back.addEventListener("click", () => { if (state.recorder) stopRecording(); syncCurrentStep(); state.step -= 1; state.errors = ""; saveDraft(); render(); });
+      back.addEventListener("click", async () => {
+        if (state.recorder) stopRecording();
+        syncCurrentStep();
+        await flushDraftSave();
+        state.step -= 1;
+        state.errors = "";
+        queueDraftSave();
+        render();
+      });
       actions.append(back);
     }
-    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? state.editing ? "Save changes" : "Submit my voice" : "Continue");
+    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
     next.type = "button";
     next.addEventListener("click", handleNext);
     actions.append(next);
@@ -1604,9 +1049,7 @@ async function initSurvey() {
       if (state.recordingBlockedInFrame) {
         const openPreview = el("button", "text-button", "Open in a new tab");
         openPreview.type = "button";
-        openPreview.addEventListener("click", () => {
-          window.open(window.location.href, "_blank", "noopener,noreferrer");
-        });
+        openPreview.addEventListener("click", () => window.open(window.location.href, "_blank", "noopener,noreferrer"));
         actions.append(openPreview);
       }
     }
@@ -1617,9 +1060,14 @@ async function initSurvey() {
     const step = getSteps()[state.step];
     if (!step) return;
     if (step.id === "about") {
+      const consent = document.querySelector("[name='recordingConsent']");
       const displayName = document.querySelector("#displayName");
+      const email = document.querySelector("#contactEmail");
+      const phone = document.querySelector("#contactPhone");
+      if (consent) state.about.recordingConsent = consent.checked;
       if (displayName) state.about.displayName = displayName.value.trim();
-      saveDraft();
+      if (email) state.about.contactEmail = email.value.trim();
+      if (phone) state.about.contactPhone = phone.value.trim();
     } else if (step.id === "details") {
       state.about.roles = Array.from(document.querySelectorAll('[name="roles"]:checked'), (input) => input.value);
       const occupation = document.querySelector("#occupation");
@@ -1635,28 +1083,25 @@ async function initSurvey() {
         state.about.locationQuery = locationInput.value.trim();
         if (locationInput.dataset.selected !== "true") state.about.city = "";
       }
-      saveDraft();
-    } else if (step.id === "questions") {
+    } else if (step.id === "questions" && state.industry) {
       state.industry.questions.forEach((question) => {
         const selected = document.querySelector(`[name="${question.id}-choice"]:checked`);
         const text = document.querySelector(`#${question.id}-text`);
-        saveQuestionAnswer(question.id, {
-          choice: selected?.value || "",
-          text: text ? text.value.trim() : ""
-        });
+        saveQuestionAnswer(question.id, { choice: selected?.value || "", text: text ? text.value.trim() : "" });
       });
-    } else {
+    } else if (step.id === "participation") {
       catalog.consent.forEach((consent) => {
         const input = document.querySelector(`[name="${consent.id}"]`);
         if (input) state.consent[consent.id] = input.checked;
       });
-      saveDraft();
     }
+    queueDraftSave();
   }
 
   function validateCurrentStep() {
     const step = getSteps()[state.step];
     if (step.id === "about") {
+      if (!state.about.recordingConsent) return "Please acknowledge that your responses will be recorded.";
       if (state.about.displayMode === "named" && !state.about.displayName) return "Add the name you would like to use on the wall, or choose anonymous.";
     } else if (step.id === "details") {
       if (!state.industry) return "Choose an industry to continue.";
@@ -1676,15 +1121,21 @@ async function initSurvey() {
       render();
       return;
     }
-    if (state.step < getSteps().length - 1) {
-      if (state.recorder) stopRecording();
-      state.completedThrough = Math.max(state.completedThrough, state.step);
-      state.step += 1;
-      saveDraft();
+    try {
+      await flushDraftSave();
+      if (state.step < getSteps().length - 1) {
+        if (state.recorder) stopRecording();
+        state.completedThrough = Math.max(state.completedThrough, state.step);
+        state.step += 1;
+        queueDraftSave();
+        render();
+        return;
+      }
+      await submitSurvey();
+    } catch (error) {
+      state.errors = error.message || "Your changes could not be saved yet.";
       render();
-      return;
     }
-    await submitSurvey();
   }
 
   async function submitSurvey() {
@@ -1694,48 +1145,15 @@ async function initSurvey() {
       submitButton.textContent = "Saving your voice…";
     }
     try {
-      const responseData = {
-        industry: state.industry.label,
-        role: state.about.roles.join(", "),
-        occupation: state.about.occupation,
-        city: state.about.city,
-        displayName: state.about.displayMode === "named" ? state.about.displayName : null,
-        isAnonymous: state.about.displayMode !== "named",
-        answers: completedAnswers(),
-        roundtableInterest: state.consent.roundtableInterest,
-        publishToWall: true,
-        useVoiceInRoundtable: state.consent.useVoiceInRoundtable,
-        contactMe: state.consent.contactMe
-      };
-      const neonBody = {
-        p_industry: responseData.industry,
-        p_role: responseData.role,
-        p_occupation: responseData.occupation,
-        p_city: responseData.city,
-        p_display_name: responseData.displayName,
-        p_is_anonymous: responseData.isAnonymous,
-        p_answers: responseData.answers,
-        p_roundtable_interest: responseData.roundtableInterest,
-        p_publish_to_wall: responseData.publishToWall,
-        p_use_voice_in_roundtable: responseData.useVoiceInRoundtable,
-        p_contact_me: responseData.contactMe
-      };
-      const submission = state.authProvider === "neon"
-        ? state.editing
-          ? await updateNeonVoice({ p_submission_id: state.submissionId, ...neonBody })
-          : await submitNeonVoice(neonBody)
-        : state.editing
-          ? { data: await putJson("/api/submissions", { ...responseData, submissionId: state.submissionId }), error: null }
-          : { data: await postJson("/api/submissions", responseData), error: null };
-      if (submission.error) throw new Error(submission.error.message || "Your response could not be saved.");
-      const submissionId = submission.data?.submission_id;
-      if (!submissionId) throw new Error(submission.data?.error || "Your response could not be saved.");
+      await flushDraftSave();
+      await fetchJson(`/api/drafts/${state.draftId}/submit`, {
+        method: "POST",
+        headers: draftHeaders()
+      });
       state.saved = true;
-      state.editing = true;
-      state.submissionId = Number(submissionId);
       state.completedThrough = getSteps().length - 1;
-      clearDraft();
-      renderSuccess();
+      sessionStatus.textContent = "Your response has been submitted.";
+      render();
     } catch (error) {
       state.errors = error.message || "We could not save your response yet. Please try again.";
       render();
@@ -1744,26 +1162,26 @@ async function initSurvey() {
 
   function renderSuccess() {
     content.replaceChildren();
-    const wrapper = el("div", "auth-card");
+    const wrapper = el("div", "completion-card");
     wrapper.append(el("span", "section-kicker", "Thank you for adding your voice"));
     wrapper.append(el("h2", null, "The table is a little wider now."));
     wrapper.append(el("p", "section-lede", "Your perspective is ready for the Voices Wall. It may take a moment to appear as the wall refreshes."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
-    const edit = el("button", "btn ghost", "Edit your submission");
+    const edit = el("button", "btn ghost", "Edit your response");
     edit.type = "button";
     edit.addEventListener("click", () => {
       state.saved = false;
       state.step = 0;
       state.errors = "";
+      queueDraftSave();
       render();
     });
-    actions.append(edit);
     const wall = el("a", "btn primary", "Visit the Voices Wall");
     wall.href = "wall.html";
     const home = el("a", "btn ghost", "Return home");
     home.href = "index.html";
-    actions.append(wall, home);
+    actions.append(edit, wall, home);
     card.append(actions);
     wrapper.append(card);
     content.append(wrapper);
@@ -1776,7 +1194,6 @@ async function initSurvey() {
     const canvas = document.querySelector(`[data-live-waveform="${questionId}"]`);
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!canvas || !AudioContextClass) return { stop: () => {} };
-
     const audioContext = new AudioContextClass();
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 128;
@@ -1792,7 +1209,6 @@ async function initSurvey() {
     };
     audioContext.resume().catch(() => {});
     paint();
-
     return {
       stop: () => {
         if (frame) window.cancelAnimationFrame(frame);
@@ -1800,6 +1216,20 @@ async function initSurvey() {
         audioContext.close().catch(() => {});
       }
     };
+  }
+
+  async function uploadRecording(questionId, blob, durationSeconds) {
+    const response = await fetch(`/api/drafts/${state.draftId}/audio/${encodeURIComponent(questionId)}`, {
+      method: "POST",
+      headers: draftHeaders({
+        "content-type": blob.type || "audio/webm",
+        "x-audio-duration": String(durationSeconds)
+      }),
+      body: blob
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "The recording could not be uploaded.");
+    return payload;
   }
 
   async function startRecording(questionId) {
@@ -1818,14 +1248,11 @@ async function initSurvey() {
       render();
       return;
     }
+
     let liveWaveform = { stop: () => {} };
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
       const supportedMimeType = typeof MediaRecorder.isTypeSupported === "function"
         ? ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type))
@@ -1861,7 +1288,7 @@ async function initSurvey() {
         state.errors = "The recording could not be completed. Check your microphone and try again, or submit a written response.";
         render();
       });
-      recorder.addEventListener("stop", () => {
+      recorder.addEventListener("stop", async () => {
         if (finished) return;
         finished = true;
         const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
@@ -1871,17 +1298,25 @@ async function initSurvey() {
           render();
           return;
         }
-        const reader = new FileReader();
-        reader.addEventListener("loadend", () => {
+        const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+        sessionStatus.textContent = "Uploading your recording…";
+        render();
+        try {
+          const recording = await uploadRecording(questionId, blob, durationSeconds);
+          const previousUrl = state.answers[questionId]?.audioUrl;
+          if (previousUrl?.startsWith("blob:")) URL.revokeObjectURL(previousUrl);
           saveQuestionAnswer(questionId, {
-            audioData: reader.result,
-            audioMimeType: blob.type,
-            durationSeconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+            audioId: recording.audio_id,
+            audioUrl: URL.createObjectURL(blob),
+            audioMimeType: recording.audio_mime_type,
+            durationSeconds: recording.duration_seconds
           });
           state.errors = "";
-          render();
-        });
-        reader.readAsDataURL(blob);
+          sessionStatus.textContent = "Recording saved automatically.";
+        } catch (error) {
+          state.errors = error.message || "The recording could not be uploaded. You can still submit a written response.";
+        }
+        render();
       });
       recorder.start(1000);
       state.recordingTimer = window.setTimeout(() => stopRecording(), MAX_RECORDING_SECONDS * 1000);
@@ -1911,246 +1346,17 @@ async function initSurvey() {
   function stopRecording() {
     if (state.recordingTimer) window.clearTimeout(state.recordingTimer);
     state.recordingTimer = null;
-    if (state.recorder && state.recorder.state !== "inactive") {
-      state.recorder.stop();
-    } else {
+    if (state.recorder && state.recorder.state !== "inactive") state.recorder.stop();
+    else {
       state.recordingStream?.getTracks().forEach((track) => track.stop());
       state.recordingStream = null;
     }
   }
 
-  window.addEventListener("authchange", (event) => {
-    const next = event.detail;
-    if (next.status === "logged-in" && state.authProvider && next.provider !== state.authProvider) return;
-    if (next.status !== "logged-in" && state.authStatus === "logged-in" && readRememberedAuthProvider() === state.authProvider) return;
-    state.user = next.status === "logged-in" ? next.user : null;
-    state.authProvider = next.status === "logged-in" ? next.provider : null;
-    state.authStatus = next.status;
-    if (next.status !== "logged-in") {
-      state.authStep = "request";
-      state.pendingEmail = "";
-      state.pendingPhone = "";
-    }
-    render();
+  window.addEventListener("pagehide", () => {
+    stopRecording();
+    flushDraftSave().catch(() => {});
   });
-  window.addEventListener("pagehide", stopRecording);
-  render();
-}
-
-async function initPassword() {
-  const content = document.querySelector("#passwordContent");
-  if (!content) return;
-
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("token");
-  const errorCode = params.get("error");
-  const wrapper = el("div", "auth-card");
-  wrapper.append(el("span", "section-kicker", "Private account"));
-  wrapper.append(el("h1", null, "Set your password."));
-
-  if (errorCode || !token) {
-    wrapper.append(el("p", "section-lede", "This password setup link is missing or has expired. Request a new one from your profile."));
-    const link = el("a", "btn primary", "Return to profile");
-    link.href = "profile.html";
-    const actions = el("div", "voice-actions");
-    actions.append(link);
-    wrapper.append(actions);
-    content.append(wrapper);
-    return;
-  }
-
-  wrapper.append(el("p", "section-lede", "Choose a password with at least 8 characters. Your one-time code sign-in will continue to work."));
-  const card = el("div", "form-card");
-  const form = document.createElement("form");
-  const fields = el("div", "field-grid");
-  const passwordField = (label, id, placeholder) => {
-    const field = el("div", "field");
-    const labelNode = document.createElement("label");
-    labelNode.htmlFor = id;
-    labelNode.textContent = label;
-    const input = document.createElement("input");
-    input.id = id;
-    input.name = id;
-    input.type = "password";
-    input.placeholder = placeholder;
-    input.required = true;
-    input.autocomplete = "new-password";
-    field.append(labelNode, input);
-    return field;
-  };
-  fields.append(passwordField("New password", "newPassword", "At least 8 characters"), passwordField("Confirm password", "confirmPassword", "Repeat your password"));
-  const actions = el("div", "form-actions");
-  const submit = el("button", "btn primary", "Set password");
-  submit.type = "submit";
-  actions.append(submit);
-  const message = el("p", "auth-message");
-  form.append(fields, actions, message);
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    message.textContent = "";
-    const error = validatePasswordPair(form.elements.newPassword.value, form.elements.confirmPassword.value);
-    if (error) {
-      message.textContent = error;
-      return;
-    }
-    submit.disabled = true;
-    try {
-      await resetNeonPassword(token, form.elements.newPassword.value);
-      wrapper.replaceChildren(
-        el("span", "section-kicker", "Password ready"),
-        el("h1", null, "You are all set."),
-        el("p", "section-lede", "Your password is ready. You can use it or an email code the next time you sign in."),
-        Object.assign(el("a", "btn primary"), { href: "survey.html", textContent: "Return to the survey" })
-      );
-    } catch (error) {
-      message.textContent = error.message || "We could not set your password yet.";
-      submit.disabled = false;
-    }
-  });
-  card.append(form);
-  wrapper.append(card);
-  content.append(wrapper);
-}
-
-async function initProfile() {
-  const content = document.querySelector("#profileContent");
-  if (!content) return;
-
-  const renderPasswordSettings = (session) => {
-    const card = el("div", "form-card profile-card");
-    card.append(el("h3", null, "Optional password"));
-    const message = el("p", "auth-message");
-    if (session.provider === "neon") {
-      card.append(el("p", "card-intro", "Keep using one-time codes, or request a secure email link to add a password for quicker sign-in later."));
-      const actions = el("div", "form-actions");
-      const submit = el("button", "btn primary", "Email me a setup link");
-      submit.type = "button";
-      submit.addEventListener("click", async () => {
-        submit.disabled = true;
-        message.textContent = "";
-        try {
-          await requestNeonPasswordSetup(session.user.email);
-          message.textContent = "A password setup link is on its way to your email.";
-        } catch (error) {
-          message.textContent = error.message || "We could not send a password setup link yet.";
-        } finally {
-          submit.disabled = false;
-        }
-      });
-      actions.append(submit);
-      card.append(actions, message);
-      return card;
-    }
-
-    card.append(el("p", "card-intro", "Keep using phone codes, or add a password for quicker sign-in later."));
-    const form = document.createElement("form");
-    form.className = "password-form";
-    const fields = el("div", "field-grid");
-    const passwordField = (label, id, placeholder) => {
-      const field = el("div", "field");
-      const labelNode = document.createElement("label");
-      labelNode.htmlFor = id;
-      labelNode.textContent = label;
-      const input = document.createElement("input");
-      input.id = id;
-      input.name = id;
-      input.type = "password";
-      input.placeholder = placeholder;
-      input.required = true;
-      field.append(labelNode, input);
-      return field;
-    };
-    const newPassword = passwordField("New password", "newPassword", "At least 8 characters");
-    newPassword.querySelector("input").autocomplete = "new-password";
-    const confirmation = passwordField("Confirm password", "confirmPassword", "Repeat your password");
-    confirmation.querySelector("input").autocomplete = "new-password";
-    fields.append(newPassword, confirmation);
-    const actions = el("div", "form-actions");
-    const submit = el("button", "btn primary", "Set password");
-    submit.type = "submit";
-    actions.append(submit);
-    form.append(fields, actions, message);
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      message.textContent = "";
-      const error = validatePasswordPair(form.elements.newPassword.value, form.elements.confirmPassword.value);
-      if (error) {
-        message.textContent = error;
-        return;
-      }
-      submit.disabled = true;
-      try {
-        await setBetterPassword(form.elements.newPassword.value);
-        form.reset();
-        message.textContent = "Your password is set. You can still use phone codes whenever you prefer.";
-      } catch (error) {
-        message.textContent = error.message || "We could not update your password yet.";
-      } finally {
-        submit.disabled = false;
-      }
-    });
-    card.append(form);
-    return card;
-  };
-
-  const renderProfile = (session) => {
-    content.replaceChildren();
-    if (session.status === "loading") {
-      content.append(el("div", "auth-card", "Loading your profile…"));
-      return;
-    }
-    if (session.status !== "logged-in" || !session.user) {
-      const wrapper = el("div", "auth-card");
-      wrapper.append(el("span", "section-kicker", "Signed out"));
-      wrapper.append(el("h2", null, "Your seat is waiting."));
-      wrapper.append(el("p", "section-lede", "Sign in with your email or phone to view your private profile and continue a saved draft."));
-      const card = el("div", "form-card");
-      const link = el("a", "btn primary", "Sign in to continue");
-      link.href = "survey.html";
-      card.append(link);
-      wrapper.append(card);
-      content.append(wrapper);
-      return;
-    }
-
-    const wrapper = el("div", "auth-card");
-    wrapper.append(el("span", "section-kicker", "Signed in"));
-    wrapper.append(el("h2", null, "Your private profile."));
-    wrapper.append(el("p", "section-lede", "This account connects your drafts and participation choices. Your identity is never shown on the Voices Wall."));
-    const card = el("div", "form-card profile-card");
-    card.append(el("h3", null, "Account details"));
-    const details = el("dl", "profile-details");
-    details.append(el("dt", null, session.provider === "better" ? "Phone" : "Email"));
-    details.append(el("dd", null, profileIdentity(session.provider, session.user)));
-    details.append(el("dt", null, "Status"));
-    details.append(el("dd", null, "Verified participant account"));
-    card.append(details);
-    const actions = el("div", "voice-actions");
-    const surveyLink = el("a", "btn primary", "Continue to the survey");
-    surveyLink.href = "survey.html";
-    const logout = el("button", "btn ghost", "Log out");
-    logout.type = "button";
-    logout.addEventListener("click", async () => {
-      logout.disabled = true;
-      try {
-        await signOutSession(session.provider);
-        clearRememberedAuthProvider();
-        window.location.href = "survey.html";
-      } catch (error) {
-        logout.disabled = false;
-        logout.textContent = error.message || "Log out";
-      }
-    });
-    actions.append(surveyLink, logout);
-    card.append(actions);
-    wrapper.append(card, renderPasswordSettings(session));
-    content.append(wrapper);
-  };
-
-  renderProfile({ status: "loading", user: null, provider: null });
-  const session = await getSession();
-  renderProfile(session);
-  window.addEventListener("authchange", (event) => renderProfile(event.detail));
 }
 
 async function initWall() {
@@ -2224,26 +1430,21 @@ async function initWall() {
     card.append(el("blockquote", null, `“${voice.transcript}”`));
     const footer = document.createElement("footer");
     footer.append(el("span", null, voice.display_name || "A participant"));
-    const audioAvailable = Boolean(voice.audio_data);
+    const audioUrl = voice.audio_id ? `/api/audio/${voice.audio_id}` : "";
     const duration = el("span", "voice-duration", formatDuration(voice.duration_seconds));
-    if (audioAvailable) {
+    if (audioUrl) {
       const audioRow = el("div", "voice-audio-row voice-card-audio-row");
-      const play = iconButton("play-button", "play", "Play voice", false);
-      play.addEventListener("click", () => playAudio(voice.audio_data, play, waveform, {
-        play: "Play voice",
-        pause: "Pause voice"
-      }));
       const waveform = document.createElement("canvas");
       waveform.className = "voice-waveform live-waveform wall-waveform";
       waveform.height = 56;
       waveform.setAttribute("aria-label", "Voice recording waveform");
-      drawDecodedWaveform(waveform, voice.audio_data);
+      const play = iconButton("play-button", "play", "Play voice", false);
+      play.addEventListener("click", () => playAudio(audioUrl, play, waveform, { play: "Play voice", pause: "Pause voice" }));
+      drawDecodedWaveform(waveform, audioUrl);
       audioRow.append(play, waveform);
       card.append(audioRow);
-      footer.append(duration);
-    } else {
-      footer.append(duration);
     }
+    footer.append(duration);
     card.append(footer);
     return card;
   }

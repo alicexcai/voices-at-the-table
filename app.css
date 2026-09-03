@@ -39,13 +39,6 @@ a { color: inherit; text-decoration: none; }
 .site-nav { display: flex; align-items: center; gap: 22px; font-size: 13px; letter-spacing: .07em; text-transform: uppercase; }
 .site-nav a { border-bottom: 1px solid transparent; transition: border-color .15s ease; }
 .site-nav a:hover, .site-nav a:focus-visible { border-color: var(--ink); }
-.site-auth { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; min-width: 0; }
-.site-auth .right { white-space: nowrap; }
-.auth-profile-link, .auth-login-link { border-bottom: 1px solid var(--ink); font-size: 13px; letter-spacing: .07em; text-transform: uppercase; }
-.auth-profile-link { font-family: "Vidaloka", Georgia, serif; font-size: 1rem; letter-spacing: 0; text-transform: none; }
-.site-auth-identity { max-width: 190px; overflow: hidden; color: var(--soft); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.auth-logout { color: var(--soft); font-size: 12px; }
-.auth-logout:hover { color: var(--ink); }
 
 .page-main { min-height: calc(100vh - 58px); }
 .page-intro { padding: 80px 0 60px; border-bottom: 2px solid var(--line); }
@@ -64,10 +57,6 @@ a { color: inherit; text-decoration: none; }
 .survey-time-label { color: var(--soft); font-size: 13px; white-space: nowrap; }
 .progress-meter { width: 100%; height: 8px; overflow: hidden; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--cream); }
 .progress-meter-fill { display: block; width: 0; height: 100%; background: var(--yellow); transition: width .25s ease; }
-.survey-layout.is-auth-gate { display: block; padding-top: 64px; }
-.survey-layout.is-auth-gate .survey-rail { display: none; }
-.survey-layout.is-auth-gate .survey-content { max-width: 520px; margin: 0 auto; }
-.survey-layout.is-auth-gate .auth-card { max-width: 470px; }
 
 .survey-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 56px; padding: 48px 0 96px; }
 .survey-rail { position: sticky; top: 88px; align-self: start; }
@@ -82,11 +71,9 @@ a { color: inherit; text-decoration: none; }
 .progress-step.is-complete .progress-num { background: var(--blue); color: var(--ink); }
 
 .survey-content { min-width: 0; }
-.profile-layout { padding: 64px 0 96px; }
-.profile-card { max-width: 560px; }
-.profile-details { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px 18px; margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--line); }
-.profile-details dt { color: var(--soft); font-size: 13px; }
-.profile-details dd { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.completion-card { max-width: 470px; margin: 0 auto; }
+.completion-card h2 { max-width: none; font-size: clamp(2.2rem, 5vw, 3.4rem); }
+.completion-card .form-card { margin-top: 24px; }
 .survey-content > .section-kicker { margin-bottom: 12px; }
 .section-kicker { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
 .survey-content h2 { font-size: clamp(2.2rem, 5vw, 4rem); max-width: 13ch; }
@@ -178,13 +165,7 @@ a { color: inherit; text-decoration: none; }
 .validation-message { margin-top: 14px; color: #9c2d16; font-size: 13px; }
 .submission-consent { margin-top: 16px; color: var(--soft); font-size: 13px; line-height: 1.45; }
 
-.auth-card { max-width: 470px; margin: 0 auto; }
-.auth-card h2 { max-width: none; font-size: clamp(2.2rem, 5vw, 3.4rem); }
-.auth-card .form-card { margin-top: 24px; }
-.auth-switch { margin-top: 18px; text-align: center; color: var(--soft); font-size: 13px; }
 .text-button { border: 0; background: none; padding: 0; font: inherit; text-decoration: underline; cursor: pointer; }
-.auth-message { min-height: 20px; margin-top: 12px; color: var(--soft); font-size: 13px; }
-.auth-code-note { grid-column: 1 / -1; margin-top: -12px; color: var(--soft); font-size: 12px; }
 
 .wall-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; align-items: center; padding: 24px 0; border-bottom: 2px solid var(--line); }
 .filter-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -223,9 +204,7 @@ a { color: inherit; text-decoration: none; }
   .app-bar { align-items: flex-start; flex-direction: column; gap: 12px; }
   .survey-time-progress { width: 100%; grid-template-columns: auto minmax(0, 1fr); }
   .survey-time-label { font-size: 12px; }
-  .survey-layout.is-auth-gate { padding-top: 48px; }
   .masthead .right { margin-left: auto; }
-  .site-auth { margin-left: auto; }
   .site-nav { order: 3; width: 100%; justify-content: flex-start; padding-top: 4px; }
   .survey-layout { grid-template-columns: 1fr; gap: 28px; }
   .survey-rail { position: static; }
@@ -237,15 +216,11 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 560px) {
   .page-intro { padding: 60px 0 48px; }
   .page-intro h1 { font-size: clamp(2.8rem, 15vw, 4.5rem); }
-  .site-auth-identity { display: none; }
-  .profile-details { grid-template-columns: 1fr; gap: 4px; }
-  .profile-details dd + dt { margin-top: 10px; }
   .field-grid, .choice-grid, .wall-grid { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
   .form-card { padding: 20px; }
   .survey-time-progress { grid-template-columns: 1fr; gap: 5px; }
   .progress-meter { height: 7px; }
-  .survey-layout.is-auth-gate { padding-top: 36px; }
   .voice-panel { padding: 14px; }
   .voice-audio-row { gap: 10px; }
   .voice-audio-row .voice-actions { gap: 7px; }
