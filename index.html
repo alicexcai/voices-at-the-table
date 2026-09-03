@@ -8,7 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vidaloka&family=Pavanam&family=Inter:wght@400;500;600&display=swap">
-<style>
+<link rel="stylesheet" href="app.css">
+	<style>
 :root{
   --cream:#FFF9E5;--card:#ECE5CF;--ink:#000000;--soft:#3f3a2c;--line:#000000;
   --maxw:1060px;
@@ -98,10 +99,14 @@ footer{padding:32px 0 54px;text-align:center;font-size:13.5px;color:var(--soft)}
 footer .mark{font-family:"Vidaloka",serif;font-size:1rem;color:var(--ink)}
 </style>
 </head>
-<body>
+<body data-page="home">
 <div class="masthead">
   <div class="row">
-    <span class="mark">Voices at the Table</span>
+    <a class="mark" href="index.html">Voices at the Table</a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="survey.html">Share your voice</a>
+      <a href="wall.html">Voices wall</a>
+    </nav>
     <span class="right">An MIT IWER Initiative</span>
   </div>
 </div>
@@ -117,8 +122,8 @@ footer .mark{font-family:"Vidaloka",serif;font-size:1rem;color:var(--ink)}
   <p class="mission">AI is reshaping work, but the people most affected rarely get a say. Voices at the Table is a <u>public discourse</u> project that aims to <b>amplify worker and community voices</b> around the question:</p>
   <p class="question">What does a <b><u>fair</u></b> AI transition look like, and how do we get there?</p>
   <div class="cta">
-    <a class="btn primary" href="mailto:hello@voicesatthetable.net?subject=Add%20my%20voice">Add your voice</a>
-    <a class="btn ghost" href="mailto:hello@voicesatthetable.net?subject=Partnering%20with%20Voices%20at%20the%20Table">Partner with us</a>
+    <a class="btn primary" href="survey.html">Add your voice</a>
+    <a class="btn ghost" href="wall.html">Explore the wall</a>
   </div>
 </div></header>
 
@@ -199,5 +204,6 @@ footer .mark{font-family:"Vidaloka",serif;font-size:1rem;color:var(--ink)}
   <span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span>
   <span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span>
 </div></div>
+<script type="module" src="app.js"></script>
 </body>
 </html>
