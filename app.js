@@ -1082,7 +1082,23 @@ async function initSurvey() {
 
   function appendFormActions(card) {
     const actions = el("div", "form-actions");
+    const nextColumn = el("div", "form-actions-next");
     const start = el("div", "form-actions-start");
+    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
+    next.type = "button";
+    next.addEventListener("click", handleNext);
+    nextColumn.append(next);
+    if (state.errors) {
+      const feedback = el("div", "validation-feedback");
+      feedback.append(el("p", "validation-message", state.errors));
+      if (state.recordingBlockedInFrame) {
+        const openPreview = el("button", "text-button", "Open in a new tab");
+        openPreview.type = "button";
+        openPreview.addEventListener("click", () => window.open(window.location.href, "_blank", "noopener,noreferrer"));
+        feedback.append(openPreview);
+      }
+      nextColumn.append(feedback);
+    }
     if (state.step > 0) {
       const back = el("button", "back-btn", "Back");
       back.type = "button";
@@ -1098,21 +1114,7 @@ async function initSurvey() {
       });
       start.append(back);
     }
-    if (state.errors) {
-      const feedback = el("div", "validation-feedback");
-      feedback.append(el("p", "validation-message", state.errors));
-      if (state.recordingBlockedInFrame) {
-        const openPreview = el("button", "text-button", "Open in a new tab");
-        openPreview.type = "button";
-        openPreview.addEventListener("click", () => window.open(window.location.href, "_blank", "noopener,noreferrer"));
-        feedback.append(openPreview);
-      }
-      start.append(feedback);
-    }
-    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
-    next.type = "button";
-    next.addEventListener("click", handleNext);
-    actions.append(start, next);
+    actions.append(nextColumn, start);
     card.append(actions);
   }
 
