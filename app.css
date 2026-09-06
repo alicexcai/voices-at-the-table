@@ -94,13 +94,13 @@ body[data-page="survey"] > footer { padding: 12px 24px 18px; }
 
 .survey-content { min-width: 0; }
 .completion-card { width: min(100%, 470px); max-width: 470px; margin: 0 auto; text-align: center; }
-.completion-card h2 { max-width: none; font-size: clamp(2.2rem, 5vw, 3.4rem); }
-.completion-card .voice-actions { justify-content: center; }
-.completion-card .section-lede { margin-top: 8px; font-size: 1rem; }
-.completion-card .form-card { margin-top: 24px; }
+.completion-card h2 { width: 100%; max-width: none; font-size: clamp(2.2rem, 5vw, 3.4rem); text-align: center; }
+.completion-card .section-lede { width: 100%; margin-top: 8px; font-size: 1rem; text-align: center; }
+.completion-card .form-card { width: 100%; margin-top: 24px; }
+.completion-card .voice-actions { width: 100%; justify-content: center; }
 .survey-content > .section-kicker { margin-bottom: 12px; }
 .section-kicker { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
-.survey-content h2 { font-size: clamp(2.2rem, 5vw, 4rem); max-width: 13ch; }
+.survey-content > h2 { font-size: clamp(2.2rem, 5vw, 4rem); max-width: 13ch; }
 .survey-content > .section-lede { max-width: 55ch; margin-top: 16px; color: var(--soft); }
 .form-card { margin-top: 34px; padding: 28px; border: 2px solid var(--line); background: var(--cream); }
 .form-card + .form-card { margin-top: 18px; }
