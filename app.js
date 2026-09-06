@@ -230,6 +230,7 @@ async function initSurvey() {
     industry: null,
     step: 0,
     completedThrough: -1,
+    visitedThrough: -1,
     errors: "",
     saveTimer: null,
     saveChain: Promise.resolve(),
@@ -346,6 +347,7 @@ async function initSurvey() {
     const savedCompletedThrough = Number(draft.completed_through);
     state.step = Math.max(0, Math.min(Number.isInteger(savedStep) ? savedStep : 0, getSteps().length - 1));
     state.completedThrough = Math.max(-1, Math.min(Number.isInteger(savedCompletedThrough) ? savedCompletedThrough : -1, getSteps().length - 1));
+    state.visitedThrough = Math.max(state.completedThrough, state.step);
     state.saved = Boolean(draft.submitted_at);
     const savedRoles = parseSavedRoles(draft.role, state.industry?.roles || []);
     state.about = {
@@ -493,13 +495,15 @@ async function initSurvey() {
     steps.forEach((item, index) => {
       const isCurrent = index === state.step;
       const isComplete = index <= state.completedThrough && !isCurrent;
-      const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""}`);
+      const isVisited = index <= state.visitedThrough && !isCurrent;
+      const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""} ${isVisited ? "is-visited" : ""}`);
       button.type = "button";
       button.disabled = index > state.completedThrough + 1;
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
       button.addEventListener("click", async () => {
         if (index <= state.completedThrough + 1 && index !== state.step) {
           syncCurrentStep();
+          state.visitedThrough = Math.max(state.visitedThrough, state.step);
           await flushDraftSave();
           state.step = index;
           state.errors = "";
@@ -618,7 +622,6 @@ async function initSurvey() {
     const roleChoices = el("div", "choice-grid");
     if (state.industry) {
       state.industry.roles.forEach((roleName, index) => {
-        if (roleName.includes("(specify)")) roleChoices.append(el("div", "choice role-choice-spacer"));
         const wrapper = el("div", "choice role-choice");
         const input = document.createElement("input");
         input.type = "checkbox";
@@ -630,38 +633,40 @@ async function initSurvey() {
         label.htmlFor = input.id;
         label.textContent = roleName;
         wrapper.append(input, label);
+        roleChoices.append(wrapper);
+
+        let specificationSlot;
+        let specification;
         if (roleName.includes("(specify)")) {
-          const specification = document.createElement("input");
+          specificationSlot = el("div", "choice role-specification-slot");
+          specification = document.createElement("input");
           specification.type = "text";
           specification.name = "roleSpecification";
           specification.dataset.roleSpecify = roleName;
           specification.placeholder = "Please specify";
           specification.value = state.about.roleSpecifications[roleName] || "";
           specification.disabled = !input.checked;
-          wrapper.classList.toggle("is-specified", input.checked);
+          specificationSlot.hidden = !input.checked;
           specification.setAttribute("aria-label", `Specify ${roleName}`);
           specification.addEventListener("input", () => {
             state.about.roleSpecifications[roleName] = specification.value.trim();
             state.errors = "";
             queueDraftSave();
           });
-          wrapper.append(specification);
-          input.addEventListener("change", () => {
-            specification.disabled = !input.checked;
-            wrapper.classList.toggle("is-specified", input.checked);
-            state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
-            if (!input.checked) delete state.about.roleSpecifications[roleName];
-            state.errors = "";
-            queueDraftSave();
-          });
-        } else {
-          input.addEventListener("change", () => {
-            state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
-            state.errors = "";
-            queueDraftSave();
-          });
+          specificationSlot.append(specification);
+          roleChoices.append(specificationSlot);
         }
-        roleChoices.append(wrapper);
+
+        input.addEventListener("change", () => {
+          state.about.roles = Array.from(roleChoices.querySelectorAll('[name="roles"]:checked'), (selected) => selected.value);
+          if (specification) {
+            specification.disabled = !input.checked;
+            specificationSlot.hidden = !input.checked;
+            if (!input.checked) delete state.about.roleSpecifications[roleName];
+          }
+          state.errors = "";
+          queueDraftSave();
+        });
       });
     } else {
       roleChoices.append(el("p", "field-note", "Choose an industry to see its roles."));
@@ -1085,6 +1090,7 @@ async function initSurvey() {
         if (state.recorder) stopRecording();
         syncCurrentStep();
         await flushDraftSave();
+        state.visitedThrough = Math.max(state.visitedThrough, state.step);
         state.step -= 1;
         state.errors = "";
         queueDraftSave();
@@ -1182,6 +1188,7 @@ async function initSurvey() {
       if (state.step < getSteps().length - 1) {
         if (state.recorder) stopRecording();
         state.completedThrough = Math.max(state.completedThrough, state.step);
+        state.visitedThrough = Math.max(state.visitedThrough, state.step);
         state.step += 1;
         queueDraftSave();
         render();
@@ -1208,6 +1215,7 @@ async function initSurvey() {
       });
       state.saved = true;
       state.completedThrough = getSteps().length - 1;
+      state.visitedThrough = getSteps().length - 1;
       sessionStatus.textContent = "Your response has been submitted.";
       render();
     } catch (error) {
