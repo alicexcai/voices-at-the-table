@@ -495,10 +495,10 @@ async function initSurvey() {
       const isComplete = index <= state.completedThrough && !isCurrent;
       const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""}`);
       button.type = "button";
-      button.disabled = index > state.completedThrough && index !== state.step;
+      button.disabled = index > state.completedThrough + 1;
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
       button.addEventListener("click", async () => {
-        if (index <= state.completedThrough) {
+        if (index <= state.completedThrough + 1 && index !== state.step) {
           syncCurrentStep();
           await flushDraftSave();
           state.step = index;
@@ -618,6 +618,7 @@ async function initSurvey() {
     const roleChoices = el("div", "choice-grid");
     if (state.industry) {
       state.industry.roles.forEach((roleName, index) => {
+        if (roleName.includes("(specify)")) roleChoices.append(el("div", "choice role-choice-spacer"));
         const wrapper = el("div", "choice role-choice");
         const input = document.createElement("input");
         input.type = "checkbox";
