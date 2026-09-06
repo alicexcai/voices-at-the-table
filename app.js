@@ -220,8 +220,6 @@ async function initSurvey() {
   const content = document.querySelector("#surveyContent");
   const stepCount = document.querySelector("#surveyStepCount");
   const sessionStatus = document.querySelector("#surveySessionStatus");
-  const industryName = document.querySelector("#surveyIndustryName");
-  const industryDescriptor = document.querySelector("#surveyIndustryDescriptor");
   const locationProvider = new OpenStreetMapProvider();
   let locationSearchTimer;
   let locationSearchRequest = 0;
@@ -495,8 +493,6 @@ async function initSurvey() {
     stepCount.textContent = `Step ${state.step + 1} of ${steps.length}`;
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
-    industryName.textContent = state.industry?.label || "Your survey";
-    industryDescriptor.textContent = state.industry?.descriptor || "Start with a little context, then share your perspective.";
     content.replaceChildren();
     if (state.saved) {
       renderSuccess();
