@@ -410,7 +410,7 @@ async function initSurvey() {
   function getSteps() {
     return [
       { id: "about", label: "About", remainingMinutes: 6 },
-      { id: "details", label: "Details", remainingMinutes: 5 },
+      { id: "details", label: "Context", remainingMinutes: 5 },
       { id: "questions", label: "Questions", remainingMinutes: 3 },
       { id: "participation", label: "Participation", remainingMinutes: 1 }
     ];
@@ -503,7 +503,13 @@ async function initSurvey() {
       button.addEventListener("click", async () => {
         if (index <= state.completedThrough + 1 && index !== state.step) {
           syncCurrentStep();
+          state.errors = validateCurrentStep();
+          if (state.errors) {
+            render();
+            return;
+          }
           state.visitedThrough = Math.max(state.visitedThrough, state.step);
+          if (state.recorder) stopRecording();
           await flushDraftSave();
           state.step = index;
           state.errors = "";
@@ -516,6 +522,7 @@ async function initSurvey() {
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
     const remainingMinutes = steps[state.step].remainingMinutes;
+    timeRemaining.classList.toggle("is-warning", remainingMinutes === 1);
     timeRemaining.textContent = `${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"} remaining`;
     content.replaceChildren();
     if (state.saved) {
@@ -931,7 +938,7 @@ async function initSurvey() {
     content.append(el("p", "section-lede", "Open each prompt in the order that feels right. Choose a quick starting point, then leave a voice note or write instead."));
     const list = el("div", "question-list");
     if (!state.industry) {
-      list.append(el("p", "field-note", "Choose an industry in Details to see the prompts."));
+      list.append(el("p", "field-note", "Choose an industry in Context to see the prompts."));
     } else {
       state.industry.questions.forEach((question, index) => {
         const answer = state.answers[question.id] || emptyAnswer();
@@ -1053,11 +1060,9 @@ async function initSurvey() {
   }
 
   function renderParticipation() {
-    content.append(el("span", "section-kicker", "04 / Participation"));
     content.append(el("h2", null, "Participation"));
-    content.append(el("p", "section-lede", "Choose how you would like to stay connected. Your completed response will be added to the Voices Wall."));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Roundtable + contact"));
+    card.append(el("h3", null, "Choose how you would like to participate."));
     const list = el("div", "field-grid");
     catalog.consent.forEach((consent) => {
       const field = el("label", "field full");
@@ -1075,8 +1080,8 @@ async function initSurvey() {
       list.append(field);
     });
     card.append(list);
-    appendFormActions(card);
     card.append(el("p", "submission-consent", "By submitting, I give permission for my written response and voice note to appear on the Voices Wall."));
+    appendFormActions(card);
     content.append(card);
   }
 

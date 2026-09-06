@@ -404,7 +404,7 @@ async function submitDraft(res, draft) {
 
   if (!draft.recording_consent) throw new RequestError(400, "Please acknowledge that your responses will be recorded.");
   if (!draft.industry || !draft.role || !draft.occupation || !draft.city) {
-    throw new RequestError(400, "Complete the About and Details steps before submitting.");
+    throw new RequestError(400, "Complete the About and Context steps before submitting.");
   }
   if (!hasCompletedAnswer) throw new RequestError(400, "Complete at least one prompt before submitting.");
 
