@@ -27,13 +27,13 @@
   </div></div>
 
   <div class="app-bar" id="surveyAppBar" hidden>
-    <div class="app-bar-inner">
-      <span class="survey-time-label" id="surveyTimeRemaining">6 minutes remaining</span>
-      <span id="surveySessionStatus" class="sr-only" aria-live="polite"></span>
-    </div>
     <div class="progress-meter" role="progressbar" aria-label="Survey completion" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0">
       <span class="progress-meter-fill" id="surveyProgressBar"></span>
+    </div>
+    <div class="app-bar-row">
       <div class="progress-list" id="surveyProgress" aria-label="Survey steps"></div>
+      <span class="survey-time-label" id="surveyTimeRemaining">6 minutes remaining</span>
+      <span id="surveySessionStatus" class="sr-only" aria-live="polite"></span>
     </div>
   </div>
 

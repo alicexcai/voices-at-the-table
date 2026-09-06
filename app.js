@@ -507,6 +507,7 @@ async function initSurvey() {
   }
 
   function renderAbout() {
+    content.append(el("h2", null, "About"));
     const card = el("div", "form-card");
     const consentField = el("label", "field full");
     const consentRow = el("span", "consent-row");
@@ -524,7 +525,7 @@ async function initSurvey() {
     consentField.append(consentRow);
     card.append(consentField);
 
-    const contactCard = el("div", "form-card");
+    const contactCard = el("div", "contact-section");
     contactCard.append(el("h3", null, "Stay in the loop"));
     contactCard.append(el("p", "card-intro", "Optional. Leave an email address or phone number if you would like project updates. This information is private and never appears on the Voices Wall."));
     const contactGrid = el("div", "field-grid");
