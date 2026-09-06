@@ -28,11 +28,9 @@
 
   <div class="app-bar" id="surveyAppBar" hidden>
     <div class="app-bar-inner">
-      <div class="survey-step-summary">
-        <span class="step-count" id="surveyStepCount">Step 1 of 4</span>
-        <span class="save-note" id="surveySessionStatus">Your response is saved automatically.</span>
-      </div>
       <span class="survey-time-label">About 6 minutes</span>
+      <div class="progress-list" id="surveyProgress" aria-label="Survey steps"></div>
+      <span id="surveySessionStatus" class="sr-only" aria-live="polite"></span>
     </div>
     <div class="progress-meter" role="progressbar" aria-label="Survey completion" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0">
       <span class="progress-meter-fill" id="surveyProgressBar"></span>
@@ -42,9 +40,6 @@
   <main class="page-main">
     <div class="app-wrap">
       <section class="survey-layout" id="surveyWorkspace" hidden>
-        <aside class="survey-rail" aria-label="Survey progress">
-          <div class="progress-list" id="surveyProgress"></div>
-        </aside>
         <div class="survey-content" id="surveyContent" aria-live="polite"></div>
       </section>
     </div>
