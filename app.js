@@ -492,6 +492,7 @@ async function initSurvey() {
 
   function render() {
     appBar.hidden = state.saved;
+    workspace.classList.toggle("is-complete", state.saved);
     const steps = getSteps();
     const completedSteps = Math.max(0, state.completedThrough + 1);
     progress.replaceChildren();
@@ -526,9 +527,8 @@ async function initSurvey() {
     });
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
-    const remainingMinutes = steps[state.step].remainingMinutes;
-    timeRemaining.classList.toggle("is-initial", remainingMinutes === 6);
-    timeRemaining.classList.toggle("is-warning", remainingMinutes === 1);
+    const remainingStepIndex = Math.min(completedSteps, steps.length - 1);
+    const remainingMinutes = steps[remainingStepIndex].remainingMinutes;
     timeRemaining.textContent = `${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"} remaining`;
     content.replaceChildren();
     if (state.saved) {
@@ -540,7 +540,7 @@ async function initSurvey() {
     else if (step.id === "details") renderDetails();
     else if (step.id === "questions") renderQuestions();
     else renderParticipation();
-    if (state.navigationError && state.errors) {
+    if (state.errors) {
       const title = content.querySelector(":scope > h2");
       if (title) {
         const feedback = el("div", "validation-feedback navigation-validation");
@@ -1109,7 +1109,7 @@ async function initSurvey() {
     next.type = "button";
     next.addEventListener("click", handleNext);
     nextColumn.append(next);
-    if (state.errors && !state.navigationError) {
+    if (state.errors) {
       const feedback = el("div", "validation-feedback");
       feedback.append(el("p", "validation-message", state.errors));
       if (state.recordingBlockedInFrame) {
