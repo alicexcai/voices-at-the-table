@@ -58,6 +58,7 @@ a { color: inherit; text-decoration: none; }
 .progress-meter-fill { position: absolute; inset: 0 auto 0 0; display: block; width: 0; height: 100%; background: var(--yellow); transition: width .25s ease; }
 .progress-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1 1 auto; min-width: 0; }
 .progress-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; min-height: 54px; padding: 10px 16px; border: 0; border-right: 1px solid rgba(0, 0, 0, .35); border-radius: 0; background: var(--cream); color: var(--ink); font: inherit; font-size: 13px; text-align: left; }
+.progress-step > span:last-child { font-family: "Pavanam", sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
 .progress-step:last-child { border-right: 0; }
 .progress-step.is-complete,
 .progress-step.is-visited { background: var(--yellow); }
