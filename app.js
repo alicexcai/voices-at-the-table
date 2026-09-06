@@ -218,6 +218,7 @@ async function initSurvey() {
   const workspace = document.querySelector("#surveyWorkspace");
   const progress = document.querySelector("#surveyProgress");
   const content = document.querySelector("#surveyContent");
+  const timeRemaining = document.querySelector("#surveyTimeRemaining");
   const sessionStatus = document.querySelector("#surveySessionStatus");
   const locationProvider = new OpenStreetMapProvider();
   let locationSearchTimer;
@@ -390,10 +391,10 @@ async function initSurvey() {
 
   function getSteps() {
     return [
-      { id: "about", label: "About" },
-      { id: "details", label: "Details" },
-      { id: "questions", label: "Questions" },
-      { id: "participation", label: "Participation" }
+      { id: "about", label: "About", remainingMinutes: 6 },
+      { id: "details", label: "Details", remainingMinutes: 5 },
+      { id: "questions", label: "Questions", remainingMinutes: 3 },
+      { id: "participation", label: "Participation", remainingMinutes: 1 }
     ];
   }
 
@@ -491,6 +492,8 @@ async function initSurvey() {
     });
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
+    const remainingMinutes = steps[state.step].remainingMinutes;
+    timeRemaining.textContent = `${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"} remaining`;
     content.replaceChildren();
     if (state.saved) {
       renderSuccess();
