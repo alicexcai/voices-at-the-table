@@ -952,6 +952,7 @@ async function initSurvey() {
 
   function renderQuestions() {
     content.append(el("h2", null, "Questions"));
+    content.append(el("p", "question-step-note", "There are 3 questions to answer as audio or written."));
     if (!state.industry) {
       content.append(el("p", "field-note", "Choose an industry in Context to see the prompts."));
       appendFormActions(content);
@@ -1049,8 +1050,13 @@ async function initSurvey() {
       card.append(textField);
     }
 
+    const choicePrompts = {
+      relationship: "Which statement best describes your current relationship with generative AI?",
+      hopeAndConcern: "How do you currently feel about generative AI?",
+      perspectives: "What do you notice about the perspectives around AI?"
+    };
     const field = el("fieldset", "field question-choice");
-    field.append(el("legend", null, "What feels closest right now?"));
+    field.append(el("legend", null, choicePrompts[question.id] || "Which response feels closest to your experience?"));
     const choices = el("div", "choice-grid");
     const options = catalog.questionOptions[question.id] || question.options || [];
     options.forEach((option, optionIndex) => {
