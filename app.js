@@ -232,6 +232,7 @@ async function initSurvey() {
     completedThrough: -1,
     visitedThrough: -1,
     errors: "",
+    navigationError: false,
     saveTimer: null,
     saveChain: Promise.resolve(),
     saveQueued: false,
@@ -504,6 +505,7 @@ async function initSurvey() {
         if (index <= state.completedThrough + 1 && index !== state.step) {
           syncCurrentStep();
           state.errors = validateCurrentStep();
+          state.navigationError = Boolean(state.errors);
           if (state.errors) {
             render();
             return;
@@ -513,6 +515,7 @@ async function initSurvey() {
           await flushDraftSave();
           state.step = index;
           state.errors = "";
+          state.navigationError = false;
           queueDraftSave();
           render();
         }
@@ -534,6 +537,14 @@ async function initSurvey() {
     else if (step.id === "details") renderDetails();
     else if (step.id === "questions") renderQuestions();
     else renderParticipation();
+    if (state.navigationError && state.errors) {
+      const title = content.querySelector(":scope > h2");
+      if (title) {
+        const feedback = el("div", "validation-feedback navigation-validation");
+        feedback.append(el("p", "validation-message", state.errors));
+        title.insertAdjacentElement("afterend", feedback);
+      }
+    }
   }
 
   function renderAbout() {
@@ -1093,7 +1104,7 @@ async function initSurvey() {
     next.type = "button";
     next.addEventListener("click", handleNext);
     nextColumn.append(next);
-    if (state.errors) {
+    if (state.errors && !state.navigationError) {
       const feedback = el("div", "validation-feedback");
       feedback.append(el("p", "validation-message", state.errors));
       if (state.recordingBlockedInFrame) {
@@ -1114,6 +1125,7 @@ async function initSurvey() {
         state.visitedThrough = Math.max(state.visitedThrough, state.step);
         state.step -= 1;
         state.errors = "";
+        state.navigationError = false;
         queueDraftSave();
         render();
       });
@@ -1185,6 +1197,7 @@ async function initSurvey() {
 
   async function handleNext() {
     syncCurrentStep();
+    state.navigationError = false;
     state.errors = validateCurrentStep();
     if (state.errors) {
       render();
@@ -1234,9 +1247,7 @@ async function initSurvey() {
   function renderSuccess() {
     content.replaceChildren();
     const wrapper = el("div", "completion-card");
-    wrapper.append(el("span", "section-kicker", "Thank you for sharing your voice"));
-    wrapper.append(el("h2", null, "The table is a little wider now."));
-    wrapper.append(el("p", "section-lede", "Your perspective has been received."));
+    wrapper.append(el("h2", null, "Thank you for sharing your voice. Your perspective has been received."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
     const edit = el("button", "btn ghost", "Edit your response");
@@ -1256,7 +1267,6 @@ async function initSurvey() {
     content.append(wrapper);
     progressBar.style.width = "100%";
     progressMeter.setAttribute("aria-valuenow", String(getSteps().length));
-    stepCount.textContent = "Response saved";
   }
 
   function createLiveWaveform(stream, questionId) {

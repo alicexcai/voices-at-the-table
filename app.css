@@ -187,10 +187,11 @@ body[data-page="survey"] > footer { padding: 12px 24px 18px; }
 .voice-card .icon-button { width: 40px; min-width: 40px; height: 40px; padding: 9px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; transform: none; }
 .form-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: start; margin-top: 28px; }
-.form-actions-next { grid-column: 1; grid-row: 1; min-width: 0; }
-.form-actions-start { grid-column: 2; grid-row: 1; min-width: 0; }
+.form-actions-next { grid-column: 2; grid-row: 1; min-width: 0; }
+.form-actions-start { grid-column: 1; grid-row: 1; min-width: 0; }
 .form-actions .back-btn { border: 0; background: transparent; padding: 10px 0; text-decoration: underline; cursor: pointer; font: inherit; }
 .validation-feedback { min-height: 0; margin-top: 8px; }
+.navigation-validation { margin-top: 8px; }
 .validation-message { margin: 0; color: #9c2d16; font-size: 13px; line-height: 1.4; }
 .submission-consent { margin-top: 16px; color: var(--soft); font-size: 13px; line-height: 1.45; }
 
@@ -252,7 +253,7 @@ body[data-page="survey"] > footer { padding: 12px 24px 18px; }
   .voice-audio-row { gap: 10px; }
   .voice-audio-row .voice-actions { gap: 7px; }
   .form-actions { grid-template-columns: 1fr; }
-  .form-actions-next { grid-column: 1; grid-row: 1; }
-  .form-actions-start { grid-column: 1; grid-row: 2; }
+  .form-actions-next { grid-column: 1; grid-row: 2; }
+  .form-actions-start { grid-column: 1; grid-row: 1; }
   .form-actions .next-btn { width: 100%; }
 }
