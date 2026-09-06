@@ -237,6 +237,7 @@ async function initSurvey() {
     saveChain: Promise.resolve(),
     saveQueued: false,
     saved: false,
+    editing: false,
     about: {
       recordingConsent: false,
       displayMode: "anonymous",
@@ -490,6 +491,7 @@ async function initSurvey() {
   }
 
   function render() {
+    appBar.hidden = state.saved;
     const steps = getSteps();
     const completedSteps = Math.max(0, state.completedThrough + 1);
     progress.replaceChildren();
@@ -525,6 +527,7 @@ async function initSurvey() {
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
     const remainingMinutes = steps[state.step].remainingMinutes;
+    timeRemaining.classList.toggle("is-initial", remainingMinutes === 6);
     timeRemaining.classList.toggle("is-warning", remainingMinutes === 1);
     timeRemaining.textContent = `${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"} remaining`;
     content.replaceChildren();
@@ -1100,7 +1103,9 @@ async function initSurvey() {
     const actions = el("div", "form-actions");
     const nextColumn = el("div", "form-actions-next");
     const start = el("div", "form-actions-start");
-    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
+    const isFinalStep = state.step === getSteps().length - 1;
+    const nextLabel = isFinalStep ? (state.editing ? "Update my voice" : "Submit my voice") : "Continue";
+    const next = el("button", "btn primary next-btn", nextLabel);
     next.type = "button";
     next.addEventListener("click", handleNext);
     nextColumn.append(next);
@@ -1247,13 +1252,15 @@ async function initSurvey() {
   function renderSuccess() {
     content.replaceChildren();
     const wrapper = el("div", "completion-card");
-    wrapper.append(el("h2", null, "Thank you for sharing your voice. Your perspective has been received."));
+    wrapper.append(el("h2", null, "Thank you for sharing your voice."));
+    wrapper.append(el("p", "section-lede", "Your perspective has been received."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
     const edit = el("button", "btn ghost", "Edit your response");
     edit.type = "button";
     edit.addEventListener("click", () => {
       state.saved = false;
+      state.editing = true;
       state.step = 0;
       state.errors = "";
       queueDraftSave();
