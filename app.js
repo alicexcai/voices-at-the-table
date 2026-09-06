@@ -223,7 +223,6 @@ async function initSurvey() {
   const locationProvider = new OpenStreetMapProvider();
   let locationSearchTimer;
   let locationSearchRequest = 0;
-  const roleOptions = ["Worker", "Manager", "Technologist", "Consumer or Community Stakeholder"];
 
   const state = {
     draftId: "",
@@ -341,7 +340,7 @@ async function initSurvey() {
       displayName: draft.display_name || "",
       contactEmail: draft.contact_email || "",
       contactPhone: draft.contact_phone || "",
-      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter((roleName) => roleOptions.includes(roleName)) : [],
+      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter((roleName) => state.industry?.roles.includes(roleName)) : [],
       occupation: draft.occupation || "",
       occupationQuery: draft.occupation || "",
       occupationMode: draft.occupation ? ((catalog.occupationOptions || []).some((option) => option.toLowerCase() === draft.occupation.toLowerCase()) ? "catalog" : "other") : "",
@@ -598,25 +597,29 @@ async function initSurvey() {
     const roleField = el("fieldset", "field role-field");
     roleField.append(el("legend", null, "Which roles are part of your perspective? Select all that apply."));
     const roleChoices = el("div", "choice-grid");
-    roleOptions.forEach((roleName, index) => {
-      const wrapper = el("div", "choice");
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.name = "roles";
-      input.id = `role-${index}`;
-      input.value = roleName;
-      input.checked = state.about.roles.includes(roleName);
-      const label = document.createElement("label");
-      label.htmlFor = input.id;
-      label.textContent = roleName;
-      wrapper.append(input, label);
-      input.addEventListener("change", () => {
-        state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
-        state.errors = "";
-        queueDraftSave();
+    if (state.industry) {
+      state.industry.roles.forEach((roleName, index) => {
+        const wrapper = el("div", "choice");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = "roles";
+        input.id = `role-${index}`;
+        input.value = roleName;
+        input.checked = state.about.roles.includes(roleName);
+        const label = document.createElement("label");
+        label.htmlFor = input.id;
+        label.textContent = roleName;
+        wrapper.append(input, label);
+        input.addEventListener("change", () => {
+          state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
+          state.errors = "";
+          queueDraftSave();
+        });
+        roleChoices.append(wrapper);
       });
-      roleChoices.append(wrapper);
-    });
+    } else {
+      roleChoices.append(el("p", "field-note", "Choose an industry to see its roles."));
+    }
     roleField.append(roleChoices);
     grid.append(industryField, roleField, occupationFieldFromState(), locationFieldFromState("Where are you joining from?", "city", state.about.city));
     card.append(grid);
@@ -638,7 +641,7 @@ async function initSurvey() {
       }
     }
     state.industry = industry;
-    state.about.roles = state.about.roles.filter((roleName) => roleOptions.includes(roleName));
+    state.about.roles = state.about.roles.filter((roleName) => industry.roles.includes(roleName));
     if (changed) {
       state.answers = {};
       state.openQuestions = {};
