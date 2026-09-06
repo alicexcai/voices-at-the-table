@@ -223,6 +223,7 @@ async function initSurvey() {
   const locationProvider = new OpenStreetMapProvider();
   let locationSearchTimer;
   let locationSearchRequest = 0;
+  const roleOptions = ["Worker", "Manager", "Technologist", "Consumer or Community Stakeholder"];
 
   const state = {
     draftId: "",
@@ -340,7 +341,7 @@ async function initSurvey() {
       displayName: draft.display_name || "",
       contactEmail: draft.contact_email || "",
       contactPhone: draft.contact_phone || "",
-      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter(Boolean) : [],
+      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter((roleName) => roleOptions.includes(roleName)) : [],
       occupation: draft.occupation || "",
       occupationQuery: draft.occupation || "",
       occupationMode: draft.occupation ? ((catalog.occupationOptions || []).some((option) => option.toLowerCase() === draft.occupation.toLowerCase()) ? "catalog" : "other") : "",
@@ -571,17 +572,13 @@ async function initSurvey() {
   }
 
   function renderDetails() {
-    content.append(el("span", "section-kicker", "02 / Details"));
-    content.append(el("h2", null, "Place your perspective."));
-    content.append(el("p", "section-lede", "Tell us which room, roles, and places shape what you are noticing."));
+    content.append(el("h2", null, "Place Your Perspective"));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Your context"));
-    card.append(el("p", "card-intro", "Choose the industry that feels closest to your experience."));
-    const grid = el("div", "field-grid");
-    const industryField = el("fieldset", "field full industry-field");
-    industryField.append(el("legend", null, "Where do you want to begin?"));
+    const grid = el("div", "details-grid");
+    const industryField = el("fieldset", "field industry-field");
+    industryField.append(el("legend", null, "Your Industry"));
     const industryChoices = el("div", "choice-grid");
-    catalog.industries.forEach((industry) => {
+    catalog.industries.filter((industry) => industry.status === "open").forEach((industry) => {
       const wrapper = el("div", "choice");
       const input = document.createElement("input");
       input.type = "radio";
@@ -589,46 +586,39 @@ async function initSurvey() {
       input.id = `industry-${industry.id}`;
       input.value = industry.id;
       input.checked = state.industry?.id === industry.id;
-      input.disabled = industry.status !== "open";
       const label = document.createElement("label");
       label.htmlFor = input.id;
       label.append(el("strong", null, industry.label));
-      label.append(el("span", "industry-description", industry.status === "open" ? industry.descriptor : "Open later"));
       wrapper.append(input, label);
       input.addEventListener("change", () => selectIndustry(industry.id));
       industryChoices.append(wrapper);
     });
     industryField.append(industryChoices);
-    grid.append(industryField);
 
-    const roleField = el("fieldset", "field full role-field");
+    const roleField = el("fieldset", "field role-field");
     roleField.append(el("legend", null, "Which roles are part of your perspective? Select all that apply."));
     const roleChoices = el("div", "choice-grid");
-    if (state.industry) {
-      state.industry.roles.forEach((roleName, index) => {
-        const wrapper = el("div", "choice");
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.name = "roles";
-        input.id = `role-${index}`;
-        input.value = roleName;
-        input.checked = state.about.roles.includes(roleName);
-        const label = document.createElement("label");
-        label.htmlFor = input.id;
-        label.textContent = roleName;
-        wrapper.append(input, label);
-        input.addEventListener("change", () => {
-          state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
-          state.errors = "";
-          queueDraftSave();
-        });
-        roleChoices.append(wrapper);
+    roleOptions.forEach((roleName, index) => {
+      const wrapper = el("div", "choice");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.name = "roles";
+      input.id = `role-${index}`;
+      input.value = roleName;
+      input.checked = state.about.roles.includes(roleName);
+      const label = document.createElement("label");
+      label.htmlFor = input.id;
+      label.textContent = roleName;
+      wrapper.append(input, label);
+      input.addEventListener("change", () => {
+        state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
+        state.errors = "";
+        queueDraftSave();
       });
-    } else {
-      roleChoices.append(el("p", "field-note", "Choose an industry to see the roles in that room."));
-    }
+      roleChoices.append(wrapper);
+    });
     roleField.append(roleChoices);
-    grid.append(roleField, occupationFieldFromState(), locationFieldFromState("Where are you joining from?", "city", state.about.city));
+    grid.append(industryField, roleField, occupationFieldFromState(), locationFieldFromState("Where are you joining from?", "city", state.about.city));
     card.append(grid);
     appendFormActions(card);
     content.append(card);
@@ -648,7 +638,7 @@ async function initSurvey() {
       }
     }
     state.industry = industry;
-    state.about.roles = state.about.roles.filter((roleName) => industry.roles.includes(roleName));
+    state.about.roles = state.about.roles.filter((roleName) => roleOptions.includes(roleName));
     if (changed) {
       state.answers = {};
       state.openQuestions = {};
@@ -793,31 +783,38 @@ async function initSurvey() {
     results.setAttribute("role", "listbox");
     results.hidden = true;
 
-    const showResults = (items) => {
+    const chooseLocation = (value, mode) => {
+      state.about.city = value;
+      state.about.locationQuery = value;
+      input.value = value;
+      input.dataset.selected = "true";
+      status.textContent = mode === "other" ? "Using a write-in location." : "Location selected.";
       results.replaceChildren();
-      if (!items.length) {
-        results.append(el("small", "location-empty", "No matching locations found."));
-        results.hidden = false;
-        return;
-      }
+      results.hidden = true;
+      state.errors = "";
+      queueDraftSave();
+    };
+
+    const showResults = (items) => {
+      const query = input.value.trim();
+      results.replaceChildren();
       items.forEach((item) => {
         const option = el("button", "location-result", item.label);
         option.type = "button";
         option.setAttribute("role", "option");
         option.addEventListener("mousedown", (event) => event.preventDefault());
-        option.addEventListener("click", () => {
-          state.about.city = item.label;
-          state.about.locationQuery = item.label;
-          input.value = item.label;
-          input.dataset.selected = "true";
-          status.textContent = "Location selected.";
-          results.replaceChildren();
-          results.hidden = true;
-          state.errors = "";
-          queueDraftSave();
-        });
+        option.addEventListener("click", () => chooseLocation(item.label, "catalog"));
         results.append(option);
       });
+      if (query) {
+        const other = el("button", "location-result location-other-result", `Use “${query}” as Other`);
+        other.type = "button";
+        other.setAttribute("role", "option");
+        other.addEventListener("mousedown", (event) => event.preventDefault());
+        other.addEventListener("click", () => chooseLocation(query, "other"));
+        results.append(other);
+      }
+      if (!results.children.length) results.append(el("small", "location-empty", "No matching locations found."));
       results.hidden = false;
     };
 
@@ -843,7 +840,14 @@ async function initSurvey() {
           const matches = await locationProvider.search({ query });
           if (requestId !== locationSearchRequest) return;
           const seen = new Set();
-          const items = matches.filter((match) => {
+          const items = matches.map((match) => {
+            const county = match.raw?.address?.county?.trim().toLowerCase();
+            const label = String(match.label || "").split(",").map((part) => part.trim()).filter((part) => {
+              const normalizedPart = part.toLowerCase();
+              return normalizedPart && normalizedPart !== county && !normalizedPart.endsWith(" county");
+            }).join(", ");
+            return { label };
+          }).filter((match) => {
             if (!match.label || seen.has(match.label)) return false;
             seen.add(match.label);
             return true;
