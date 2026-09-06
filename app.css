@@ -60,6 +60,21 @@ a { color: inherit; text-decoration: none; }
 .progress-step.is-complete { background: var(--yellow); }
 
 .survey-layout { padding: 48px 0 96px; }
+body[data-page="survey"] .ticker { display: none; }
+body[data-page="survey"] .page-main { min-height: 0; }
+body[data-page="survey"] .survey-layout { padding: 18px 0 24px; }
+body[data-page="survey"] .survey-content > h2 { font-size: clamp(2rem, 4vw, 3rem); }
+body[data-page="survey"] .form-card { margin-top: 18px; padding: 18px; }
+body[data-page="survey"] .contact-section { margin-top: 16px; }
+body[data-page="survey"] .contact-section .card-intro { margin-top: 4px; font-size: 13px; line-height: 1.35; }
+body[data-page="survey"] .field-grid { gap: 12px 16px; margin-top: 16px; }
+body[data-page="survey"] .field input,
+body[data-page="survey"] .field textarea,
+body[data-page="survey"] .field select { padding-top: 6px; padding-bottom: 5px; }
+body[data-page="survey"] .choice-grid { gap: 8px; margin-top: 10px; }
+body[data-page="survey"] .choice label { min-height: 44px; padding: 10px 12px; }
+body[data-page="survey"] .form-actions { margin-top: 16px; }
+body[data-page="survey"] > footer { padding: 12px 24px 18px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .progress-step .progress-num { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 50%; font-family: "Vidaloka", Georgia, serif; font-size: 13px; }
 .progress-step.is-current { color: var(--ink); }
