@@ -242,6 +242,7 @@ async function initSurvey() {
       contactEmail: "",
       contactPhone: "",
       roles: [],
+      roleSpecifications: {},
       occupation: "",
       occupationMode: "",
       occupationQuery: "",
@@ -325,6 +326,19 @@ async function initSurvey() {
     sessionStatus.textContent = "Your response is saved automatically.";
   }
 
+  function parseSavedRoles(value, availableRoles) {
+    const roles = [];
+    const specifications = {};
+    if (typeof value !== "string") return { roles, specifications };
+    value.split(/\s*,\s*/).filter(Boolean).forEach((savedRole) => {
+      const roleName = availableRoles.find((role) => savedRole === role || savedRole.startsWith(`${role}: `));
+      if (!roleName) return;
+      roles.push(roleName);
+      if (savedRole.startsWith(`${roleName}: `)) specifications[roleName] = savedRole.slice(roleName.length + 2).trim();
+    });
+    return { roles, specifications };
+  }
+
   async function applyDraft(draft) {
     const industry = catalog.industries.find((item) => item.status === "open" && (item.label === draft.industry || item.id === draft.industry));
     state.industry = industry || null;
@@ -333,6 +347,7 @@ async function initSurvey() {
     state.step = Math.max(0, Math.min(Number.isInteger(savedStep) ? savedStep : 0, getSteps().length - 1));
     state.completedThrough = Math.max(-1, Math.min(Number.isInteger(savedCompletedThrough) ? savedCompletedThrough : -1, getSteps().length - 1));
     state.saved = Boolean(draft.submitted_at);
+    const savedRoles = parseSavedRoles(draft.role, state.industry?.roles || []);
     state.about = {
       ...state.about,
       recordingConsent: Boolean(draft.recording_consent),
@@ -340,7 +355,8 @@ async function initSurvey() {
       displayName: draft.display_name || "",
       contactEmail: draft.contact_email || "",
       contactPhone: draft.contact_phone || "",
-      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter((roleName) => state.industry?.roles.includes(roleName)) : [],
+      roles: savedRoles.roles,
+      roleSpecifications: savedRoles.specifications,
       occupation: draft.occupation || "",
       occupationQuery: draft.occupation || "",
       occupationMode: draft.occupation ? ((catalog.occupationOptions || []).some((option) => option.toLowerCase() === draft.occupation.toLowerCase()) ? "catalog" : "other") : "",
@@ -402,7 +418,10 @@ async function initSurvey() {
     return {
       recordingConsent: state.about.recordingConsent,
       industry: state.industry?.label || "",
-      role: state.about.roles.join(", "),
+      role: state.about.roles.map((roleName) => {
+        const specification = state.about.roleSpecifications[roleName];
+        return specification ? `${roleName}: ${specification}` : roleName;
+      }).join(", "),
       occupation: state.about.occupation,
       city: state.about.city,
       displayName: state.about.displayMode === "named" ? state.about.displayName : "",
@@ -599,7 +618,7 @@ async function initSurvey() {
     const roleChoices = el("div", "choice-grid");
     if (state.industry) {
       state.industry.roles.forEach((roleName, index) => {
-        const wrapper = el("div", "choice");
+        const wrapper = el("div", "choice role-choice");
         const input = document.createElement("input");
         input.type = "checkbox";
         input.name = "roles";
@@ -610,11 +629,37 @@ async function initSurvey() {
         label.htmlFor = input.id;
         label.textContent = roleName;
         wrapper.append(input, label);
-        input.addEventListener("change", () => {
-          state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
-          state.errors = "";
-          queueDraftSave();
-        });
+        if (roleName.includes("(specify)")) {
+          const specification = document.createElement("input");
+          specification.type = "text";
+          specification.name = "roleSpecification";
+          specification.dataset.roleSpecify = roleName;
+          specification.placeholder = "Please specify";
+          specification.value = state.about.roleSpecifications[roleName] || "";
+          specification.disabled = !input.checked;
+          wrapper.classList.toggle("is-specified", input.checked);
+          specification.setAttribute("aria-label", `Specify ${roleName}`);
+          specification.addEventListener("input", () => {
+            state.about.roleSpecifications[roleName] = specification.value.trim();
+            state.errors = "";
+            queueDraftSave();
+          });
+          wrapper.append(specification);
+          input.addEventListener("change", () => {
+            specification.disabled = !input.checked;
+            wrapper.classList.toggle("is-specified", input.checked);
+            state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
+            if (!input.checked) delete state.about.roleSpecifications[roleName];
+            state.errors = "";
+            queueDraftSave();
+          });
+        } else {
+          input.addEventListener("change", () => {
+            state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
+            state.errors = "";
+            queueDraftSave();
+          });
+        }
         roleChoices.append(wrapper);
       });
     } else {
@@ -642,6 +687,8 @@ async function initSurvey() {
     }
     state.industry = industry;
     state.about.roles = state.about.roles.filter((roleName) => industry.roles.includes(roleName));
+    state.about.roleSpecifications = Object.fromEntries(Object.entries(state.about.roleSpecifications)
+      .filter(([roleName]) => industry.roles.includes(roleName)));
     if (changed) {
       state.answers = {};
       state.openQuestions = {};
@@ -1029,6 +1076,7 @@ async function initSurvey() {
 
   function appendFormActions(card) {
     const actions = el("div", "form-actions");
+    const start = el("div", "form-actions-start");
     if (state.step > 0) {
       const back = el("button", "back-btn", "Back");
       back.type = "button";
@@ -1041,21 +1089,23 @@ async function initSurvey() {
         queueDraftSave();
         render();
       });
-      actions.append(back);
+      start.append(back);
     }
-    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
-    next.type = "button";
-    next.addEventListener("click", handleNext);
-    actions.append(next);
     if (state.errors) {
-      actions.append(el("p", "validation-message", state.errors));
+      const feedback = el("div", "validation-feedback");
+      feedback.append(el("p", "validation-message", state.errors));
       if (state.recordingBlockedInFrame) {
         const openPreview = el("button", "text-button", "Open in a new tab");
         openPreview.type = "button";
         openPreview.addEventListener("click", () => window.open(window.location.href, "_blank", "noopener,noreferrer"));
-        actions.append(openPreview);
+        feedback.append(openPreview);
       }
+      start.append(feedback);
     }
+    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
+    next.type = "button";
+    next.addEventListener("click", handleNext);
+    actions.append(start, next);
     card.append(actions);
   }
 
@@ -1073,6 +1123,7 @@ async function initSurvey() {
       if (phone) state.about.contactPhone = phone.value.trim();
     } else if (step.id === "details") {
       state.about.roles = Array.from(document.querySelectorAll('[name="roles"]:checked'), (input) => input.value);
+      state.about.roleSpecifications = Object.fromEntries(Array.from(document.querySelectorAll('[data-role-specify]'), (input) => [input.dataset.roleSpecify, input.value.trim()]));
       const occupation = document.querySelector("#occupation");
       if (occupation) {
         state.about.occupationQuery = occupation.value.trim();
@@ -1109,6 +1160,7 @@ async function initSurvey() {
     } else if (step.id === "details") {
       if (!state.industry) return "Choose an industry to continue.";
       if (!state.about.roles.length) return "Select at least one role that is part of your perspective.";
+      if (state.about.roles.some((roleName) => roleName.includes("(specify)") && !state.about.roleSpecifications[roleName])) return "Specify the community stakeholder role you selected.";
       if (!state.about.occupation) return "Choose an occupation or use a write-in occupation.";
       if (!state.about.city) return "Choose a location from the worldwide search results so we can place your perspective in context.";
     } else if (step.id === "questions") {

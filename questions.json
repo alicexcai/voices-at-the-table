@@ -196,7 +196,7 @@
       "label": "Science",
       "status": "open",
       "descriptor": "Labs, fieldwork, discovery, and the public trust in knowledge.",
-      "roles": ["Researcher", "Administrator", "Technologist", "Other community stakeholder (specify)"],
+      "roles": ["Research Worker", "Research Manager or Professor", "Administrator", "Technologist", "Other community stakeholder (specify)"],
       "stakeholderGroups": ["workers and researchers", "managers and technologists", "students, participants, and communities"],
       "questions": [
         {
