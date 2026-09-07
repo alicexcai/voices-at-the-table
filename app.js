@@ -26,6 +26,10 @@ const promptHighlights = {
   perspectives: ["policies", "better for people"]
 };
 
+function isMultiSelectQuestion(questionId) {
+  return questionId === "relationship" || questionId === "perspectives";
+}
+
 function appendHighlightedText(parent, text, phrases = []) {
   const matches = phrases
     .map((phrase) => ({ phrase, start: text.indexOf(phrase) }))
@@ -1073,29 +1077,39 @@ async function initSurvey() {
     }
 
     const choicePrompts = {
-      relationship: "Which statement best describes your current relationship with generative AI?",
-      hopeAndConcern: "How do you currently feel about generative AI?",
-      perspectives: "What are the top 3 policies you support that you think would make the AI Transition better for people?"
+      relationship: "Select the statement(s) that resonate with you:",
+      hopeAndConcern: "Select the statement that resonates with you most:",
+      perspectives: "Select the statement(s) that resonates with you:"
     };
     const field = el("fieldset", "field question-choice");
-    const choicePrompt = el("legend");
-    appendHighlightedText(choicePrompt, choicePrompts[question.id] || "Which response feels closest to your experience?", promptHighlights[question.id]);
-    field.append(choicePrompt);
+    field.append(el("legend", null, choicePrompts[question.id] || "Which response feels closest to your experience?"));
     const choices = el("div", "choice-grid");
-    const options = catalog.questionOptions[question.id] || question.options || [];
+    const multiSelect = isMultiSelectQuestion(question.id);
+    const selectedChoices = new Set((answer.choice || "").split("\n").filter(Boolean));
+    const options = question.id === "perspectives" && question.options?.length
+      ? question.options
+      : catalog.questionOptions[question.id]?.length
+        ? catalog.questionOptions[question.id]
+        : question.options || [];
     options.forEach((option, optionIndex) => {
       const wrapper = el("div", "choice");
       const input = document.createElement("input");
-      input.type = "radio";
+      input.type = multiSelect ? "checkbox" : "radio";
       input.name = `${question.id}-choice`;
       input.id = `${question.id}-choice-${optionIndex}`;
       input.value = option;
-      input.checked = answer.choice === option;
+      input.checked = selectedChoices.has(option);
       const label = document.createElement("label");
       label.htmlFor = input.id;
       label.textContent = option;
       wrapper.append(input, label);
-      input.addEventListener("change", () => saveQuestionAnswer(question.id, { choice: option }));
+      input.addEventListener("change", () => {
+        const selected = Array.from(
+          field.querySelectorAll(`[name="${question.id}-choice"]:checked`),
+          (selectedInput) => selectedInput.value
+        );
+        saveQuestionAnswer(question.id, { choice: multiSelect ? selected.join("\n") : selected[0] || "" });
+      });
       choices.append(wrapper);
     });
     field.append(choices);
@@ -1237,9 +1251,15 @@ async function initSurvey() {
     } else if (step.id === "questions" && state.industry) {
       const question = state.industry.questions[state.questionIndex];
       if (question) {
-        const selected = document.querySelector(`[name="${question.id}-choice"]:checked`);
+        const selected = Array.from(
+          document.querySelectorAll(`[name="${question.id}-choice"]:checked`),
+          (input) => input.value
+        );
         const text = document.querySelector(`#${question.id}-text`);
-        saveQuestionAnswer(question.id, { choice: selected?.value || "", text: text ? text.value.trim() : "" });
+        saveQuestionAnswer(question.id, {
+          choice: isMultiSelectQuestion(question.id) ? selected.join("\n") : selected[0] || "",
+          text: text ? text.value.trim() : ""
+        });
       }
     } else if (step.id === "participation") {
       catalog.consent.forEach((consent) => {

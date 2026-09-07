@@ -88,24 +88,18 @@
   ],
   "questionOptions": {
     "relationship": [
-      "I use it often",
-      "I experiment with it occasionally",
-      "I encounter it through others",
-      "I have not used it yet",
-      "I am unsure"
+      "I do not use AI",
+      "I rarely use AI",
+      "I use AI a lot",
+      "I am pressured to use AI more"
     ],
     "hopeAndConcern": [
-      "I feel mostly hopeful",
-      "I feel both hopeful and concerned",
-      "I feel mostly concerned",
-      "I am still figuring it out"
+      "I feel mostly hopeful about AI",
+      "I feel most concerned about AI",
+      "I feel both hopeful and concerned about AI",
+      "I am still figuring out how I feel about AI"
     ],
-    "perspectives": [
-      "People want different things from it",
-      "People disagree about what should be protected",
-      "People have different levels of power or say",
-      "I am not sure yet"
-    ]
+    "perspectives": []
   },
   "consent": [
     {
@@ -138,7 +132,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
@@ -153,6 +147,11 @@
           "title": "Different perspectives",
           "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect teachers in Education",
+            "I think we need policies to protect students in Education",
+            "I think we need policies to promote innovation in Education"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -171,7 +170,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
@@ -186,6 +185,11 @@
           "title": "Different perspectives",
           "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect healthcare workers in Healthcare",
+            "I think we need policies to protect patients in Healthcare",
+            "I think we need policies to promote innovation in Healthcare"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -204,7 +208,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
@@ -219,6 +223,10 @@
           "title": "Different perspectives",
           "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect researchers in Science",
+            "I think we need policies to promote innovation in Science"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -237,7 +245,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
@@ -252,6 +260,11 @@
           "title": "Different perspectives",
           "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect artists in Creative Work",
+            "I think we need policies to protect consumers in Creative Work",
+            "I think we need policies to promote innovation in Creative Work"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -270,7 +283,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
@@ -303,7 +316,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
