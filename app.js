@@ -1120,7 +1120,20 @@ async function initSurvey() {
 
   function handleQuestionContinue() {
     syncCurrentStep();
-    if (state.recorder) stopRecording();
+    if (state.recorder) {
+      stopRecording();
+      state.errors = "Wait for the recording to finish saving before continuing.";
+      state.navigationError = false;
+      render();
+      return;
+    }
+    const currentQuestion = state.industry?.questions[state.questionIndex];
+    if (!currentQuestion || !questionHasResponse(currentQuestion)) {
+      state.errors = "Complete this question with a selection and a voice note or written response.";
+      state.navigationError = false;
+      render();
+      return;
+    }
     const questionCount = state.industry?.questions.length || 0;
     if (state.questionIndex < questionCount - 1) {
       state.questionIndex += 1;
@@ -1142,11 +1155,16 @@ async function initSurvey() {
     queueDraftSave();
   }
 
+  function questionHasResponse(question) {
+    const answer = state.answers[question.id];
+    return Boolean(answer?.choice?.trim() && (answer.text?.trim() || answer.audioId));
+  }
+
   function completedAnswers() {
     return Object.fromEntries(
       state.industry.questions
         .map((question) => [question.id, state.answers[question.id]])
-        .filter(([, answer]) => Boolean(answer?.choice && (answer.text?.trim() || answer.audioId)))
+        .filter(([question]) => questionHasResponse(question))
     );
   }
 
@@ -1282,7 +1300,9 @@ async function initSurvey() {
       if (!state.about.occupation) return "Choose an occupation or use a write-in occupation.";
       if (!state.about.city) return "Choose a location from the worldwide search results so we can place your perspective in context.";
     } else if (step.id === "questions") {
-      if (!Object.values(completedAnswers()).length) return "Complete at least one prompt with a starting point and a voice note or written response.";
+      if (state.industry.questions.some((question) => !questionHasResponse(question))) {
+        return "Complete all three questions with a selection and a voice note or written response.";
+      }
     }
     return "";
   }
