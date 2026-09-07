@@ -21,8 +21,8 @@ const el = (tag, className, text) => {
 const lucideIcons = { mic: Mic, pause: Pause, pencil: Pencil, play: Play, square: Square };
 
 const promptHighlights = {
-  relationship: ["work", "daily life", "current relationship"],
-  hopeAndConcern: ["hope", "challenges"],
+  relationship: ["work or daily life", "current relationship"],
+  hopeAndConcern: ["hope", "concerns"],
   perspectives: ["policies", "better for people"]
 };
 
@@ -1075,10 +1075,12 @@ async function initSurvey() {
     const choicePrompts = {
       relationship: "Which statement best describes your current relationship with generative AI?",
       hopeAndConcern: "How do you currently feel about generative AI?",
-      perspectives: "What do you notice about the perspectives around AI?"
+      perspectives: "What are the top 3 policies you support that you think would make the AI Transition better for people?"
     };
     const field = el("fieldset", "field question-choice");
-    field.append(el("legend", null, choicePrompts[question.id] || "Which response feels closest to your experience?"));
+    const choicePrompt = el("legend");
+    appendHighlightedText(choicePrompt, choicePrompts[question.id] || "Which response feels closest to your experience?", promptHighlights[question.id]);
+    field.append(choicePrompt);
     const choices = el("div", "choice-grid");
     const options = catalog.questionOptions[question.id] || question.options || [];
     options.forEach((option, optionIndex) => {
