@@ -75,6 +75,7 @@ body[data-page="survey"] .survey-layout { padding: 18px 0 24px; }
 body[data-page="survey"] .survey-layout.is-complete { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
 body[data-page="survey"] .survey-layout.is-complete .survey-content { width: 100%; }
 body[data-page="survey"] .survey-content > h2 { max-width: none; font-size: clamp(2rem, 4vw, 3rem); white-space: nowrap; }
+body[data-page="survey"] .survey-content > h2 + .question-card-active { margin-top: 18px; }
 body[data-page="survey"] .form-card { margin-top: 18px; padding: 18px; }
 body[data-page="survey"] .contact-section { margin-top: 16px; }
 body[data-page="survey"] .contact-section .card-intro { margin-top: 4px; font-size: 13px; line-height: 1.35; }
@@ -130,18 +131,18 @@ body[data-page="survey"] > footer { padding: 12px 24px 18px; }
 .question-tab { display: grid; place-items: center; width: 36px; height: 32px; border: 1.5px solid var(--ink); background: var(--cream); color: var(--ink); cursor: pointer; font: inherit; font-size: 12px; letter-spacing: .06em; }
 .question-tab:hover, .question-tab:focus-visible, .question-tab.is-active { background: var(--yellow); }
 .question-tab.is-active { font-weight: 600; }
-.question-prompt-featured { max-width: none; margin-top: 10px; color: var(--ink); font-family: "Vidaloka", Georgia, serif; font-size: clamp(1.45rem, 2.6vw, 2.2rem); font-style: normal; line-height: 1.2; }
+.question-prompt-featured { max-width: 58ch; margin-top: 10px; color: var(--ink); font-family: "Vidaloka", Georgia, serif; font-size: clamp(1.45rem, 2.6vw, 2.2rem); font-style: normal; line-height: 1.2; }
 .question-response-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 24px; }
 .question-response-row .voice-panel { margin-top: 0; }
 .question-card-active .question-voice-panel { padding: 0; border: 0; background: transparent; box-shadow: none; }
-.question-voice-panel .voice-audio-row { width: 100%; margin-top: 0; }
+.question-voice-panel .voice-audio-row { width: min(100%, 58ch); margin-top: 0; }
 .question-voice-panel .voice-actions { align-items: center; flex-direction: column; flex-wrap: nowrap; gap: 10px; margin-top: 0; }
 .question-voice-panel .voice-waveform { height: 100px; }
 .question-record-button { width: 68px; min-width: 68px; height: 68px; padding: 15px; }
 .question-record-button svg { width: 34px; height: 34px; }
 .question-text-toggle { display: block; border: 0; background: transparent; margin-top: 12px; padding: 0; color: var(--ink); cursor: pointer; font: inherit; font-size: 12px; line-height: 1.2; text-align: left; text-decoration: underline; }
-.question-waveform-placeholder { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; min-width: 0; min-height: 100px; padding: 0; }
-.question-waveform-placeholder span { display: block; width: 5px; min-height: 8px; border-radius: 999px; background: var(--ink); opacity: .7; }
+.question-waveform-placeholder { display: flex; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; min-width: 0; min-height: 100px; overflow: hidden; padding: 0; }
+.question-waveform-placeholder span { display: block; flex: 0 0 5px; width: 5px; min-height: 8px; border-radius: 999px; background: var(--ink); opacity: .7; }
 .question-card-active .question-text-response { margin-top: 18px; padding-top: 0; border-top: 0; }
 .question-card-active .question-choice { margin-top: 24px; }
 .form-card h3 { font-size: 1.45rem; }

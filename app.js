@@ -1020,7 +1020,7 @@ async function initSurvey() {
       if (answer.audioUrl && !isRecording) drawDecodedWaveform(waveform, answer.audioUrl);
     } else {
       waveform = el("div", "question-waveform-placeholder");
-      [28, 46, 34, 68, 40, 56, 30, 76, 44, 62, 36, 52, 26, 48, 34, 66, 42, 58, 30, 72, 38, 54, 28, 64].forEach((height) => {
+      [28, 46, 34, 68, 40, 56, 30, 76, 44, 62, 36, 52, 26, 48, 34, 66, 42, 58, 30, 72, 38, 54, 28, 64, 36, 54, 30, 70, 42, 60, 26, 74, 40, 58, 34, 66, 28, 50, 38, 72, 32, 56, 44, 64, 30, 48, 36, 60].forEach((height) => {
         const bar = el("span");
         bar.style.height = `${height}px`;
         waveform.append(bar);
@@ -1038,16 +1038,14 @@ async function initSurvey() {
 
     if (state.textOpenQuestions[question.id] || answer.text) {
       const textField = el("div", "field question-text-response");
-      const textLabel = document.createElement("label");
-      textLabel.htmlFor = `${question.id}-text`;
-      textLabel.textContent = "Written response";
       const text = document.createElement("textarea");
       text.id = `${question.id}-text`;
       text.name = `${question.id}-text`;
-      text.placeholder = question.placeholder || "Write what comes to mind.";
+      text.setAttribute("aria-label", "Written response");
+      text.placeholder = "Write something here...";
       text.value = answer.text || "";
       text.addEventListener("input", () => saveQuestionAnswer(question.id, { text: text.value.trim() }));
-      textField.append(textLabel, text);
+      textField.append(text);
       card.append(textField);
     }
 
