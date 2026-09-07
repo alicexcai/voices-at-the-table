@@ -1025,11 +1025,17 @@ async function initSurvey() {
     card.append(prompt);
 
     const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
+    const hasRecording = Boolean(answer.audioId || answer.audioUrl);
+    const recordLabel = isRecording
+      ? "Stop recording"
+      : hasRecording
+        ? "Re-record your voice note (will overwrite)"
+        : "Record a voice note";
     const voicePanel = el("div", "voice-panel question-voice-panel");
     const responseRow = el("div", "question-response-row");
     const audioRow = el("div", "voice-audio-row");
     const actions = el("div", "voice-actions");
-    const recordButton = iconButton("btn primary small question-record-button", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
+    const recordButton = iconButton("btn primary small question-record-button", isRecording ? "square" : "mic", recordLabel, isRecording);
     recordButton.addEventListener("click", () => {
       syncCurrentStep();
       if (state.recorder) {
