@@ -397,16 +397,18 @@ async function submitDraft(res, draft) {
     [draft.draft_id]
   );
   const recordedQuestionIds = new Set(recordings.rows.map((recording) => recording.question_id));
-  const hasCompletedAnswer = Object.entries(answers).some(([questionId, answer]) =>
-    isString(answer?.choice || "", 500) && answer.choice.trim() &&
-    (isString(answer?.text || "", 10_000) && answer.text.trim() || recordedQuestionIds.has(questionId))
-  );
+  const requiredQuestionIds = ["relationship", "hopeAndConcern", "perspectives"];
+  const hasCompletedAnswers = requiredQuestionIds.every((questionId) => {
+    const answer = answers[questionId];
+    return isString(answer?.choice || "", 500) && answer.choice.trim() &&
+      (isString(answer?.text || "", 10_000) && answer.text.trim() || recordedQuestionIds.has(questionId));
+  });
 
   if (!draft.recording_consent) throw new RequestError(400, "Please acknowledge that your responses will be recorded.");
   if (!draft.industry || !draft.role || !draft.occupation || !draft.city) {
-    throw new RequestError(400, "Complete the About and Details steps before submitting.");
+    throw new RequestError(400, "Complete the About and Context steps before submitting.");
   }
-  if (!hasCompletedAnswer) throw new RequestError(400, "Complete at least one prompt before submitting.");
+  if (!hasCompletedAnswers) throw new RequestError(400, "Complete all three questions before submitting.");
 
   await pool.query(
     `UPDATE public.anonymous_survey_drafts

@@ -1,5 +1,5 @@
 import { OpenStreetMapProvider } from "https://esm.sh/leaflet-geosearch@4.4.0";
-import { createElement, Mic, Pause, Play, Square } from "https://esm.sh/lucide@0.468.0";
+import { createElement, Mic, Pause, Pencil, Play, Square } from "https://esm.sh/lucide@0.468.0";
 
 const DATA_URL = "questions.json";
 const MAX_RECORDING_SECONDS = 60;
@@ -18,7 +18,32 @@ const el = (tag, className, text) => {
   return node;
 };
 
-const lucideIcons = { mic: Mic, pause: Pause, play: Play, square: Square };
+const lucideIcons = { mic: Mic, pause: Pause, pencil: Pencil, play: Play, square: Square };
+
+const promptHighlights = {
+  relationship: ["work or daily life", "current relationship"],
+  hopeAndConcern: ["hope", "concerns"],
+  perspectives: ["policies", "better for people"]
+};
+
+function isMultiSelectQuestion(questionId) {
+  return questionId === "relationship" || questionId === "perspectives";
+}
+
+function appendHighlightedText(parent, text, phrases = []) {
+  const matches = phrases
+    .map((phrase) => ({ phrase, start: text.indexOf(phrase) }))
+    .filter(({ start }) => start >= 0)
+    .sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  matches.forEach(({ phrase, start }) => {
+    if (start < cursor) return;
+    if (start > cursor) parent.append(document.createTextNode(text.slice(cursor, start)));
+    parent.append(el("span", "prompt-highlight", text.slice(start, start + phrase.length)));
+    cursor = start + phrase.length;
+  });
+  if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
+}
 
 function createIcon(name) {
   const icon = createElement(lucideIcons[name]);
@@ -218,10 +243,8 @@ async function initSurvey() {
   const workspace = document.querySelector("#surveyWorkspace");
   const progress = document.querySelector("#surveyProgress");
   const content = document.querySelector("#surveyContent");
-  const stepCount = document.querySelector("#surveyStepCount");
+  const timeRemaining = document.querySelector("#surveyTimeRemaining");
   const sessionStatus = document.querySelector("#surveySessionStatus");
-  const industryName = document.querySelector("#surveyIndustryName");
-  const industryDescriptor = document.querySelector("#surveyIndustryDescriptor");
   const locationProvider = new OpenStreetMapProvider();
   let locationSearchTimer;
   let locationSearchRequest = 0;
@@ -232,11 +255,14 @@ async function initSurvey() {
     industry: null,
     step: 0,
     completedThrough: -1,
+    visitedThrough: -1,
     errors: "",
+    navigationError: false,
     saveTimer: null,
     saveChain: Promise.resolve(),
     saveQueued: false,
     saved: false,
+    editing: false,
     about: {
       recordingConsent: false,
       displayMode: "anonymous",
@@ -244,6 +270,7 @@ async function initSurvey() {
       contactEmail: "",
       contactPhone: "",
       roles: [],
+      roleSpecifications: {},
       occupation: "",
       occupationMode: "",
       occupationQuery: "",
@@ -252,6 +279,8 @@ async function initSurvey() {
     },
     answers: {},
     openQuestions: {},
+    questionIndex: 0,
+    textOpenQuestions: {},
     consent: {
       roundtableInterest: false,
       useVoiceInRoundtable: false,
@@ -327,6 +356,19 @@ async function initSurvey() {
     sessionStatus.textContent = "Your response is saved automatically.";
   }
 
+  function parseSavedRoles(value, availableRoles) {
+    const roles = [];
+    const specifications = {};
+    if (typeof value !== "string") return { roles, specifications };
+    value.split(/\s*,\s*/).filter(Boolean).forEach((savedRole) => {
+      const roleName = availableRoles.find((role) => savedRole === role || savedRole.startsWith(`${role}: `));
+      if (!roleName) return;
+      roles.push(roleName);
+      if (savedRole.startsWith(`${roleName}: `)) specifications[roleName] = savedRole.slice(roleName.length + 2).trim();
+    });
+    return { roles, specifications };
+  }
+
   async function applyDraft(draft) {
     const industry = catalog.industries.find((item) => item.status === "open" && (item.label === draft.industry || item.id === draft.industry));
     state.industry = industry || null;
@@ -334,7 +376,9 @@ async function initSurvey() {
     const savedCompletedThrough = Number(draft.completed_through);
     state.step = Math.max(0, Math.min(Number.isInteger(savedStep) ? savedStep : 0, getSteps().length - 1));
     state.completedThrough = Math.max(-1, Math.min(Number.isInteger(savedCompletedThrough) ? savedCompletedThrough : -1, getSteps().length - 1));
+    state.visitedThrough = Math.max(state.completedThrough, state.step);
     state.saved = Boolean(draft.submitted_at);
+    const savedRoles = parseSavedRoles(draft.role, state.industry?.roles || []);
     state.about = {
       ...state.about,
       recordingConsent: Boolean(draft.recording_consent),
@@ -342,7 +386,8 @@ async function initSurvey() {
       displayName: draft.display_name || "",
       contactEmail: draft.contact_email || "",
       contactPhone: draft.contact_phone || "",
-      roles: typeof draft.role === "string" ? draft.role.split(/\s*,\s*/).filter(Boolean) : [],
+      roles: savedRoles.roles,
+      roleSpecifications: savedRoles.specifications,
       occupation: draft.occupation || "",
       occupationQuery: draft.occupation || "",
       occupationMode: draft.occupation ? ((catalog.occupationOptions || []).some((option) => option.toLowerCase() === draft.occupation.toLowerCase()) ? "catalog" : "other") : "",
@@ -393,10 +438,10 @@ async function initSurvey() {
 
   function getSteps() {
     return [
-      { id: "about", label: "About" },
-      { id: "details", label: "Details" },
-      { id: "questions", label: "Questions" },
-      { id: "participation", label: "Participation" }
+      { id: "about", label: "About", remainingMinutes: 6 },
+      { id: "details", label: "Context", remainingMinutes: 5 },
+      { id: "questions", label: "Questions", remainingMinutes: 3 },
+      { id: "participation", label: "Participation", remainingMinutes: 1 }
     ];
   }
 
@@ -404,7 +449,10 @@ async function initSurvey() {
     return {
       recordingConsent: state.about.recordingConsent,
       industry: state.industry?.label || "",
-      role: state.about.roles.join(", "),
+      role: state.about.roles.map((roleName) => {
+        const specification = state.about.roleSpecifications[roleName];
+        return specification ? `${roleName}: ${specification}` : roleName;
+      }).join(", "),
       occupation: state.about.occupation,
       city: state.about.city,
       displayName: state.about.displayMode === "named" ? state.about.displayName : "",
@@ -470,33 +518,45 @@ async function initSurvey() {
   }
 
   function render() {
+    appBar.hidden = state.saved;
+    workspace.classList.toggle("is-complete", state.saved);
     const steps = getSteps();
     const completedSteps = Math.max(0, state.completedThrough + 1);
     progress.replaceChildren();
     steps.forEach((item, index) => {
       const isCurrent = index === state.step;
       const isComplete = index <= state.completedThrough && !isCurrent;
-      const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""}`);
+      const isVisited = index <= state.visitedThrough && !isCurrent;
+      const button = el("button", `progress-step ${isCurrent ? "is-current" : ""} ${isComplete ? "is-complete" : ""} ${isVisited ? "is-visited" : ""}`);
       button.type = "button";
-      button.disabled = index > state.completedThrough && index !== state.step;
+      button.disabled = index > state.completedThrough + 1;
       button.append(el("span", "progress-num", String(index + 1).padStart(2, "0")), el("span", null, item.label));
       button.addEventListener("click", async () => {
-        if (index <= state.completedThrough) {
+        if (index <= state.completedThrough + 1 && index !== state.step) {
           syncCurrentStep();
+          state.errors = validateCurrentStep();
+          state.navigationError = Boolean(state.errors);
+          if (state.errors) {
+            render();
+            return;
+          }
+          state.visitedThrough = Math.max(state.visitedThrough, state.step);
+          if (state.recorder) stopRecording();
           await flushDraftSave();
           state.step = index;
           state.errors = "";
+          state.navigationError = false;
           queueDraftSave();
           render();
         }
       });
       progress.append(button);
     });
-    stepCount.textContent = `Step ${state.step + 1} of ${steps.length}`;
     progressBar.style.width = `${(completedSteps / steps.length) * 100}%`;
     progressMeter.setAttribute("aria-valuenow", String(completedSteps));
-    industryName.textContent = state.industry?.label || "Your survey";
-    industryDescriptor.textContent = state.industry?.descriptor || "Start with a little context, then share your perspective.";
+    const remainingStepIndex = Math.min(completedSteps, steps.length - 1);
+    const remainingMinutes = steps[remainingStepIndex].remainingMinutes;
+    timeRemaining.textContent = `${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"} remaining`;
     content.replaceChildren();
     if (state.saved) {
       renderSuccess();
@@ -507,14 +567,19 @@ async function initSurvey() {
     else if (step.id === "details") renderDetails();
     else if (step.id === "questions") renderQuestions();
     else renderParticipation();
+    if (state.errors) {
+      const title = content.querySelector(":scope > h2");
+      if (title) {
+        const feedback = el("div", "validation-feedback navigation-validation");
+        feedback.append(el("p", "validation-message", state.errors));
+        title.insertAdjacentElement("afterend", feedback);
+      }
+    }
   }
 
   function renderAbout() {
-    content.append(el("span", "section-kicker", "01 / About"));
-    content.append(el("h2", null, "Before we begin."));
-    content.append(el("p", "section-lede", "Your response is saved automatically as you go. You can remain anonymous on the Voices Wall and optionally leave contact information for project updates."));
+    content.append(el("h2", null, "About"));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Recording consent"));
     const consentField = el("label", "field full");
     const consentRow = el("span", "consent-row");
     const consentInput = document.createElement("input");
@@ -530,6 +595,17 @@ async function initSurvey() {
     consentRow.append(consentInput, document.createTextNode("I understand that the responses I enter, including any voice recording, will be stored as part of this survey."));
     consentField.append(consentRow);
     card.append(consentField);
+
+    const contactCard = el("div", "contact-section");
+    contactCard.append(el("h3", null, "Stay in the loop"));
+    contactCard.append(el("p", "card-intro", "Optional. Leave an email address or phone number if you would like project updates. This information is private and never appears on the Voices Wall."));
+    const contactGrid = el("div", "field-grid");
+    contactGrid.append(
+      textFieldFromState("Email address", "contactEmail", "contactEmail", state.about.contactEmail, false, "you@example.com", "email"),
+      textFieldFromState("Phone number", "contactPhone", "contactPhone", state.about.contactPhone, false, "+1 555 123 4567", "tel")
+    );
+    contactCard.append(contactGrid);
+    card.append(contactCard);
 
     const grid = el("div", "field-grid");
     const displayMode = el("fieldset", "field full");
@@ -561,31 +637,18 @@ async function initSurvey() {
     }
     card.append(grid);
 
-    const contactCard = el("div", "form-card");
-    contactCard.append(el("h3", null, "Stay in the loop"));
-    contactCard.append(el("p", "card-intro", "Optional. Leave an email address or phone number if you would like project updates. This information is private and never appears on the Voices Wall."));
-    const contactGrid = el("div", "field-grid");
-    contactGrid.append(
-      textFieldFromState("Email address", "contactEmail", "contactEmail", state.about.contactEmail, false, "you@example.com", "email"),
-      textFieldFromState("Phone number", "contactPhone", "contactPhone", state.about.contactPhone, false, "+1 555 123 4567", "tel")
-    );
-    contactCard.append(contactGrid);
-    appendFormActions(contactCard);
-    content.append(card, contactCard);
+    appendFormActions(card);
+    content.append(card);
   }
 
   function renderDetails() {
-    content.append(el("span", "section-kicker", "02 / Details"));
-    content.append(el("h2", null, "Place your perspective."));
-    content.append(el("p", "section-lede", "Tell us which room, roles, and places shape what you are noticing."));
+    content.append(el("h2", null, "Place Your Perspective"));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Your context"));
-    card.append(el("p", "card-intro", "Choose the industry that feels closest to your experience."));
-    const grid = el("div", "field-grid");
-    const industryField = el("fieldset", "field full industry-field");
-    industryField.append(el("legend", null, "Where do you want to begin?"));
+    const grid = el("div", "details-grid");
+    const industryField = el("fieldset", "field industry-field");
+    industryField.append(el("legend", null, "Your Industry"));
     const industryChoices = el("div", "choice-grid");
-    catalog.industries.forEach((industry) => {
+    catalog.industries.filter((industry) => industry.status === "open").forEach((industry) => {
       const wrapper = el("div", "choice");
       const input = document.createElement("input");
       input.type = "radio";
@@ -593,24 +656,21 @@ async function initSurvey() {
       input.id = `industry-${industry.id}`;
       input.value = industry.id;
       input.checked = state.industry?.id === industry.id;
-      input.disabled = industry.status !== "open";
       const label = document.createElement("label");
       label.htmlFor = input.id;
       label.append(el("strong", null, industry.label));
-      label.append(el("span", "industry-description", industry.status === "open" ? industry.descriptor : "Open later"));
       wrapper.append(input, label);
       input.addEventListener("change", () => selectIndustry(industry.id));
       industryChoices.append(wrapper);
     });
     industryField.append(industryChoices);
-    grid.append(industryField);
 
-    const roleField = el("fieldset", "field full role-field");
+    const roleField = el("fieldset", "field role-field");
     roleField.append(el("legend", null, "Which roles are part of your perspective? Select all that apply."));
     const roleChoices = el("div", "choice-grid");
     if (state.industry) {
       state.industry.roles.forEach((roleName, index) => {
-        const wrapper = el("div", "choice");
+        const wrapper = el("div", "choice role-choice");
         const input = document.createElement("input");
         input.type = "checkbox";
         input.name = "roles";
@@ -621,18 +681,46 @@ async function initSurvey() {
         label.htmlFor = input.id;
         label.textContent = roleName;
         wrapper.append(input, label);
+        roleChoices.append(wrapper);
+
+        let specificationSlot;
+        let specification;
+        if (roleName.includes("(specify)")) {
+          specificationSlot = el("div", "choice role-specification-slot");
+          specification = document.createElement("input");
+          specification.type = "text";
+          specification.name = "roleSpecification";
+          specification.dataset.roleSpecify = roleName;
+          specification.placeholder = "Please specify";
+          specification.value = state.about.roleSpecifications[roleName] || "";
+          specification.disabled = !input.checked;
+          specificationSlot.hidden = !input.checked;
+          specification.setAttribute("aria-label", `Specify ${roleName}`);
+          specification.addEventListener("input", () => {
+            state.about.roleSpecifications[roleName] = specification.value.trim();
+            state.errors = "";
+            queueDraftSave();
+          });
+          specificationSlot.append(specification);
+          roleChoices.append(specificationSlot);
+        }
+
         input.addEventListener("change", () => {
-          state.about.roles = Array.from(roleChoices.querySelectorAll("input:checked"), (selected) => selected.value);
+          state.about.roles = Array.from(roleChoices.querySelectorAll('[name="roles"]:checked'), (selected) => selected.value);
+          if (specification) {
+            specification.disabled = !input.checked;
+            specificationSlot.hidden = !input.checked;
+            if (!input.checked) delete state.about.roleSpecifications[roleName];
+          }
           state.errors = "";
           queueDraftSave();
         });
-        roleChoices.append(wrapper);
       });
     } else {
-      roleChoices.append(el("p", "field-note", "Choose an industry to see the roles in that room."));
+      roleChoices.append(el("p", "field-note", "Choose an industry to see its roles."));
     }
     roleField.append(roleChoices);
-    grid.append(roleField, occupationFieldFromState(), locationFieldFromState("Where are you joining from?", "city", state.about.city));
+    grid.append(industryField, roleField, occupationFieldFromState(), locationFieldFromState("Where are you joining from?", "city", state.about.city));
     card.append(grid);
     appendFormActions(card);
     content.append(card);
@@ -653,9 +741,13 @@ async function initSurvey() {
     }
     state.industry = industry;
     state.about.roles = state.about.roles.filter((roleName) => industry.roles.includes(roleName));
+    state.about.roleSpecifications = Object.fromEntries(Object.entries(state.about.roleSpecifications)
+      .filter(([roleName]) => industry.roles.includes(roleName)));
     if (changed) {
       state.answers = {};
       state.openQuestions = {};
+      state.questionIndex = 0;
+      state.textOpenQuestions = {};
       state.completedThrough = Math.min(state.completedThrough, state.step - 1);
     }
     state.errors = "";
@@ -797,31 +889,38 @@ async function initSurvey() {
     results.setAttribute("role", "listbox");
     results.hidden = true;
 
-    const showResults = (items) => {
+    const chooseLocation = (value, mode) => {
+      state.about.city = value;
+      state.about.locationQuery = value;
+      input.value = value;
+      input.dataset.selected = "true";
+      status.textContent = mode === "other" ? "Using a write-in location." : "Location selected.";
       results.replaceChildren();
-      if (!items.length) {
-        results.append(el("small", "location-empty", "No matching locations found."));
-        results.hidden = false;
-        return;
-      }
+      results.hidden = true;
+      state.errors = "";
+      queueDraftSave();
+    };
+
+    const showResults = (items) => {
+      const query = input.value.trim();
+      results.replaceChildren();
       items.forEach((item) => {
         const option = el("button", "location-result", item.label);
         option.type = "button";
         option.setAttribute("role", "option");
         option.addEventListener("mousedown", (event) => event.preventDefault());
-        option.addEventListener("click", () => {
-          state.about.city = item.label;
-          state.about.locationQuery = item.label;
-          input.value = item.label;
-          input.dataset.selected = "true";
-          status.textContent = "Location selected.";
-          results.replaceChildren();
-          results.hidden = true;
-          state.errors = "";
-          queueDraftSave();
-        });
+        option.addEventListener("click", () => chooseLocation(item.label, "catalog"));
         results.append(option);
       });
+      if (query) {
+        const other = el("button", "location-result location-other-result", `Use “${query}” as Other`);
+        other.type = "button";
+        other.setAttribute("role", "option");
+        other.addEventListener("mousedown", (event) => event.preventDefault());
+        other.addEventListener("click", () => chooseLocation(query, "other"));
+        results.append(other);
+      }
+      if (!results.children.length) results.append(el("small", "location-empty", "No matching locations found."));
       results.hidden = false;
     };
 
@@ -847,7 +946,14 @@ async function initSurvey() {
           const matches = await locationProvider.search({ query });
           if (requestId !== locationSearchRequest) return;
           const seen = new Set();
-          const items = matches.filter((match) => {
+          const items = matches.map((match) => {
+            const county = match.raw?.address?.county?.trim().toLowerCase();
+            const label = String(match.label || "").split(",").map((part) => part.trim()).filter((part) => {
+              const normalizedPart = part.toLowerCase();
+              return normalizedPart && normalizedPart !== county && !normalizedPart.endsWith(" county");
+            }).join(", ");
+            return { label };
+          }).filter((match) => {
             if (!match.label || seen.has(match.label)) return false;
             seen.add(match.label);
             return true;
@@ -870,113 +976,187 @@ async function initSurvey() {
   }
 
   function renderQuestions() {
-    content.append(el("span", "section-kicker", "03 / Three prompts"));
-    content.append(el("h2", null, "Tell us what you are noticing."));
-    content.append(el("p", "section-lede", "Open each prompt in the order that feels right. Choose a quick starting point, then leave a voice note or write instead."));
-    const list = el("div", "question-list");
+    content.append(el("h2", null, "Questions"));
     if (!state.industry) {
-      list.append(el("p", "field-note", "Choose an industry in Details to see the prompts."));
-    } else {
-      state.industry.questions.forEach((question, index) => {
-        const answer = state.answers[question.id] || emptyAnswer();
-        const hasSavedAnswer = Boolean(answer.choice || answer.text || answer.audioId);
-        const card = el("article", `question-card ${state.openQuestions[question.id] ? "is-open" : ""}`);
-        const toggle = el("button", "question-toggle");
-        toggle.type = "button";
-        toggle.setAttribute("aria-expanded", String(Boolean(state.openQuestions[question.id])));
-        toggle.setAttribute("aria-controls", `question-panel-${question.id}`);
-        toggle.append(
-          el("span", "question-number", String(index + 1).padStart(2, "0")),
-          el("span", "question-toggle-copy", question.title),
-          hasSavedAnswer ? el("span", "question-toggle-status", "Saved") : el("span", "question-toggle-status"),
-          el("span", "question-toggle-icon", state.openQuestions[question.id] ? "−" : "+")
-        );
-        toggle.addEventListener("click", () => {
-          state.openQuestions[question.id] = !state.openQuestions[question.id];
+      content.append(el("p", "field-note", "Choose an industry in Context to see the prompts."));
+      appendFormActions(content);
+      return;
+    }
+
+    const questions = state.industry.questions;
+    const questionIndex = Math.min(state.questionIndex, questions.length - 1);
+    state.questionIndex = questionIndex;
+    const question = questions[questionIndex];
+    const answer = state.answers[question.id] || emptyAnswer();
+    const card = el("article", "question-card question-card-active");
+    const header = el("div", "question-card-header");
+    const eyebrow = el("div", "question-eyebrow", `${String(questionIndex + 1).padStart(2, "0")}. ${question.title}`);
+    const tabs = el("div", "question-tabs", null);
+    questions.forEach((item, index) => {
+      const tab = el("button", `question-tab ${index === questionIndex ? "is-active" : ""}`, String(index + 1).padStart(2, "0"));
+      tab.type = "button";
+      tab.title = item.title;
+      tab.setAttribute("aria-label", `Question ${index + 1}: ${item.title}`);
+      tab.setAttribute("aria-selected", String(index === questionIndex));
+      tab.addEventListener("click", () => {
+        syncCurrentStep();
+        if (state.recorder) stopRecording();
+        const incompleteQuestion = state.industry?.questions
+          .slice(0, index)
+          .find((item) => !questionHasResponse(item));
+        if (incompleteQuestion) {
+          const questionNumber = state.industry.questions.indexOf(incompleteQuestion) + 1;
+          state.errors = `Complete question ${questionNumber}: ${questionValidationMessage(incompleteQuestion)}`;
+          state.navigationError = true;
           render();
-        });
-        card.append(toggle);
-        const panel = el("div", "question-panel");
-        panel.id = `question-panel-${question.id}`;
-        panel.hidden = !state.openQuestions[question.id];
-        panel.append(el("p", "question-prompt", question.prompt));
-        const field = el("fieldset", "field question-choice");
-        field.append(el("legend", null, "What feels closest right now?"));
-        const choices = el("div", "choice-grid");
-        const options = catalog.questionOptions[question.id] || question.options || [];
-        options.forEach((option, optionIndex) => {
-          const wrapper = el("div", "choice");
-          const input = document.createElement("input");
-          input.type = "radio";
-          input.name = `${question.id}-choice`;
-          input.id = `${question.id}-choice-${optionIndex}`;
-          input.value = option;
-          input.checked = answer.choice === option;
-          const label = document.createElement("label");
-          label.htmlFor = input.id;
-          label.textContent = option;
-          wrapper.append(input, label);
-          input.addEventListener("change", () => saveQuestionAnswer(question.id, { choice: option }));
-          choices.append(wrapper);
-        });
-        field.append(choices);
-        panel.append(field);
-
-        const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
-        const voicePanel = el("div", "voice-panel question-voice-panel");
-        const copy = el("div", "voice-copy");
-        copy.append(el("strong", null, answer.audioId ? "Voice note captured" : "Make this one heard"));
-        copy.append(el("p", null, answer.audioId ? `${formatDuration(answer.durationSeconds)} · You can record again.` : `Primary response · up to ${MAX_RECORDING_SECONDS} seconds.`));
-        const audioRow = el("div", "voice-audio-row");
-        const actions = el("div", "voice-actions");
-        const recordButton = iconButton("btn primary small", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
-        recordButton.addEventListener("click", () => {
-          syncCurrentStep();
-          if (state.recorder) {
-            stopRecording();
-            return;
-          }
-          startRecording(question.id);
-        });
-        actions.append(recordButton);
-        let waveform;
-        if (isRecording || answer.audioId) {
-          waveform = document.createElement("canvas");
-          waveform.className = "voice-waveform live-waveform";
-          waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
-          waveform.height = 64;
-          waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
-          if (answer.audioUrl && !isRecording) drawDecodedWaveform(waveform, answer.audioUrl);
+          return;
         }
-        if (answer.audioUrl) {
-          const playButton = iconButton("btn ghost small", "play", "Play recording", false);
-          playButton.addEventListener("click", () => playAudio(answer.audioUrl, playButton, waveform));
-          actions.append(playButton);
-        }
-        audioRow.append(actions);
-        if (waveform) audioRow.append(waveform);
-        copy.append(audioRow);
-        voicePanel.append(copy);
-        panel.append(voicePanel);
+        state.questionIndex = index;
+        state.errors = "";
+        state.navigationError = false;
+        render();
+      });
+      tabs.append(tab);
+    });
+    header.append(eyebrow, tabs);
+    card.append(header);
+    const prompt = el("p", "question-prompt question-prompt-featured");
+    appendHighlightedText(prompt, question.prompt, promptHighlights[question.id]);
+    card.append(prompt);
 
-        const textField = el("div", "field question-text-response");
-        const textLabel = document.createElement("label");
-        textLabel.htmlFor = `${question.id}-text`;
-        textLabel.textContent = "Or enter text instead";
-        const text = document.createElement("textarea");
-        text.id = `${question.id}-text`;
-        text.name = `${question.id}-text`;
-        text.placeholder = question.placeholder || "Write what comes to mind.";
-        text.value = answer.text || "";
-        text.addEventListener("input", () => saveQuestionAnswer(question.id, { text: text.value.trim() }));
-        textField.append(textLabel, text);
-        panel.append(textField);
-        card.append(panel);
-        list.append(card);
+    const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
+    const voicePanel = el("div", "voice-panel question-voice-panel");
+    const responseRow = el("div", "question-response-row");
+    const audioRow = el("div", "voice-audio-row");
+    const actions = el("div", "voice-actions");
+    const recordButton = iconButton("btn primary small question-record-button", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
+    recordButton.addEventListener("click", () => {
+      syncCurrentStep();
+      if (state.recorder) {
+        stopRecording();
+        return;
+      }
+      startRecording(question.id);
+    });
+    actions.append(recordButton);
+    const textToggle = el("button", "question-text-toggle", "Write response instead");
+    textToggle.type = "button";
+    textToggle.setAttribute("aria-expanded", String(Boolean(state.textOpenQuestions[question.id])));
+    textToggle.addEventListener("click", () => {
+      state.textOpenQuestions[question.id] = !state.textOpenQuestions[question.id];
+      state.errors = "";
+      render();
+    });
+    let waveform;
+    if (isRecording || answer.audioId) {
+      waveform = document.createElement("canvas");
+      waveform.className = "voice-waveform live-waveform";
+      waveform.dataset[isRecording ? "liveWaveform" : "playbackWaveform"] = question.id;
+      waveform.height = 64;
+      waveform.setAttribute("aria-label", isRecording ? "Live microphone waveform" : "Voice recording waveform");
+      if (answer.audioUrl && !isRecording) drawDecodedWaveform(waveform, answer.audioUrl);
+    } else {
+      waveform = el("div", "question-waveform-placeholder");
+      [28, 46, 34, 68, 40, 56, 30, 76, 44, 62, 36, 52, 26, 48, 34, 66, 42, 58, 30, 72, 38, 54, 28, 64, 36, 54, 30, 70, 42, 60, 26, 74, 40, 58, 34, 66, 28, 50, 38, 72, 32, 56, 44, 64, 30, 48, 36, 60].forEach((height) => {
+        const bar = el("span");
+        bar.style.height = `${height}px`;
+        waveform.append(bar);
       });
     }
-    content.append(list);
-    appendFormActions(content);
+    if (answer.audioUrl) {
+      const playButton = iconButton("btn ghost small", "play", "Play recording", false);
+      playButton.addEventListener("click", () => playAudio(answer.audioUrl, playButton, waveform));
+      actions.append(playButton);
+    }
+    audioRow.append(actions, waveform);
+    voicePanel.append(audioRow, textToggle);
+    responseRow.append(voicePanel);
+    card.append(responseRow);
+
+    if (state.textOpenQuestions[question.id] || answer.text) {
+      const textField = el("div", "field question-text-response");
+      const text = document.createElement("textarea");
+      text.id = `${question.id}-text`;
+      text.name = `${question.id}-text`;
+      text.setAttribute("aria-label", "Written response");
+      text.placeholder = "Write something here...";
+      text.value = answer.text || "";
+      text.addEventListener("input", () => saveQuestionAnswer(question.id, { text: text.value.trim() }));
+      textField.append(text);
+      card.append(textField);
+    }
+
+    const choicePrompts = {
+      relationship: "Select the statement(s) that resonate with you:",
+      hopeAndConcern: "Select the statement that resonates with you most:",
+      perspectives: "Select the statement(s) that resonates with you:"
+    };
+    const field = el("fieldset", "field question-choice");
+    field.append(el("legend", null, choicePrompts[question.id] || "Which response feels closest to your experience?"));
+    const choices = el("div", "choice-grid");
+    const multiSelect = isMultiSelectQuestion(question.id);
+    const selectedChoices = new Set((answer.choice || "").split("\n").filter(Boolean));
+    const options = question.id === "perspectives" && question.options?.length
+      ? question.options
+      : catalog.questionOptions[question.id]?.length
+        ? catalog.questionOptions[question.id]
+        : question.options || [];
+    options.forEach((option, optionIndex) => {
+      const wrapper = el("div", "choice");
+      const input = document.createElement("input");
+      input.type = multiSelect ? "checkbox" : "radio";
+      input.name = `${question.id}-choice`;
+      input.id = `${question.id}-choice-${optionIndex}`;
+      input.value = option;
+      input.checked = selectedChoices.has(option);
+      const label = document.createElement("label");
+      label.htmlFor = input.id;
+      label.textContent = option;
+      wrapper.append(input, label);
+      input.addEventListener("change", () => {
+        const selected = Array.from(
+          field.querySelectorAll(`[name="${question.id}-choice"]:checked`),
+          (selectedInput) => selectedInput.value
+        );
+        saveQuestionAnswer(question.id, { choice: multiSelect ? selected.join("\n") : selected[0] || "" });
+      });
+      choices.append(wrapper);
+    });
+    field.append(choices);
+    card.append(field);
+    appendFormActions(card);
+    content.append(card);
+  }
+
+  function handleQuestionContinue() {
+    syncCurrentStep();
+    if (state.recorder) {
+      stopRecording();
+      state.errors = "Wait for the recording to finish saving before continuing.";
+      state.navigationError = false;
+      render();
+      return;
+    }
+    const currentQuestion = state.industry?.questions[state.questionIndex];
+    const questionError = currentQuestion
+      ? questionValidationMessage(currentQuestion)
+      : "Choose an industry before answering questions.";
+    if (questionError) {
+      state.errors = questionError;
+      state.navigationError = false;
+      render();
+      return;
+    }
+    const questionCount = state.industry?.questions.length || 0;
+    if (state.questionIndex < questionCount - 1) {
+      state.questionIndex += 1;
+      state.errors = "";
+      state.navigationError = false;
+      queueDraftSave();
+      render();
+      return;
+    }
+    handleNext();
   }
 
   function emptyAnswer() {
@@ -988,20 +1168,30 @@ async function initSurvey() {
     queueDraftSave();
   }
 
+  function questionValidationMessage(question) {
+    const answer = state.answers[question.id] || emptyAnswer();
+    const missing = [];
+    if (!answer.choice.trim()) missing.push("Select at least one statement.");
+    if (!answer.text.trim() && !answer.audioId) missing.push("Add a voice note or written response.");
+    return missing.join(" ");
+  }
+
+  function questionHasResponse(question) {
+    return !questionValidationMessage(question);
+  }
+
   function completedAnswers() {
     return Object.fromEntries(
       state.industry.questions
         .map((question) => [question.id, state.answers[question.id]])
-        .filter(([, answer]) => Boolean(answer?.choice && (answer.text?.trim() || answer.audioId)))
+        .filter(([question]) => questionHasResponse(question))
     );
   }
 
   function renderParticipation() {
-    content.append(el("span", "section-kicker", "04 / Participation"));
     content.append(el("h2", null, "Participation"));
-    content.append(el("p", "section-lede", "Choose how you would like to stay connected. Your completed response will be added to the Voices Wall."));
     const card = el("div", "form-card");
-    card.append(el("h3", null, "Roundtable + contact"));
+    card.append(el("h3", null, "Choose how you would like to participate."));
     const list = el("div", "field-grid");
     catalog.consent.forEach((consent) => {
       const field = el("label", "field full");
@@ -1019,13 +1209,35 @@ async function initSurvey() {
       list.append(field);
     });
     card.append(list);
-    appendFormActions(card);
     card.append(el("p", "submission-consent", "By submitting, I give permission for my written response and voice note to appear on the Voices Wall."));
+    appendFormActions(card);
     content.append(card);
   }
 
   function appendFormActions(card) {
     const actions = el("div", "form-actions");
+    const nextColumn = el("div", "form-actions-next");
+    const start = el("div", "form-actions-start");
+    const isFinalStep = state.step === getSteps().length - 1;
+    const nextLabel = isFinalStep ? (state.editing ? "Update my voice" : "Submit my voice") : "Continue";
+    const next = el("button", "btn primary next-btn", nextLabel);
+    next.type = "button";
+    next.addEventListener("click", () => {
+      if (getSteps()[state.step].id === "questions") handleQuestionContinue();
+      else handleNext();
+    });
+    nextColumn.append(next);
+    if (state.errors) {
+      const feedback = el("div", "validation-feedback");
+      feedback.append(el("p", "validation-message", state.errors));
+      if (state.recordingBlockedInFrame) {
+        const openPreview = el("button", "text-button", "Open in a new tab");
+        openPreview.type = "button";
+        openPreview.addEventListener("click", () => window.open(window.location.href, "_blank", "noopener,noreferrer"));
+        feedback.append(openPreview);
+      }
+      nextColumn.append(feedback);
+    }
     if (state.step > 0) {
       const back = el("button", "back-btn", "Back");
       back.type = "button";
@@ -1033,26 +1245,16 @@ async function initSurvey() {
         if (state.recorder) stopRecording();
         syncCurrentStep();
         await flushDraftSave();
+        state.visitedThrough = Math.max(state.visitedThrough, state.step);
         state.step -= 1;
         state.errors = "";
+        state.navigationError = false;
         queueDraftSave();
         render();
       });
-      actions.append(back);
+      start.append(back);
     }
-    const next = el("button", "btn primary next-btn", state.step === getSteps().length - 1 ? "Submit my voice" : "Continue");
-    next.type = "button";
-    next.addEventListener("click", handleNext);
-    actions.append(next);
-    if (state.errors) {
-      actions.append(el("p", "validation-message", state.errors));
-      if (state.recordingBlockedInFrame) {
-        const openPreview = el("button", "text-button", "Open in a new tab");
-        openPreview.type = "button";
-        openPreview.addEventListener("click", () => window.open(window.location.href, "_blank", "noopener,noreferrer"));
-        actions.append(openPreview);
-      }
-    }
+    actions.append(nextColumn, start);
     card.append(actions);
   }
 
@@ -1070,6 +1272,7 @@ async function initSurvey() {
       if (phone) state.about.contactPhone = phone.value.trim();
     } else if (step.id === "details") {
       state.about.roles = Array.from(document.querySelectorAll('[name="roles"]:checked'), (input) => input.value);
+      state.about.roleSpecifications = Object.fromEntries(Array.from(document.querySelectorAll('[data-role-specify]'), (input) => [input.dataset.roleSpecify, input.value.trim()]));
       const occupation = document.querySelector("#occupation");
       if (occupation) {
         state.about.occupationQuery = occupation.value.trim();
@@ -1084,11 +1287,18 @@ async function initSurvey() {
         if (locationInput.dataset.selected !== "true") state.about.city = "";
       }
     } else if (step.id === "questions" && state.industry) {
-      state.industry.questions.forEach((question) => {
-        const selected = document.querySelector(`[name="${question.id}-choice"]:checked`);
+      const question = state.industry.questions[state.questionIndex];
+      if (question) {
+        const selected = Array.from(
+          document.querySelectorAll(`[name="${question.id}-choice"]:checked`),
+          (input) => input.value
+        );
         const text = document.querySelector(`#${question.id}-text`);
-        saveQuestionAnswer(question.id, { choice: selected?.value || "", text: text ? text.value.trim() : "" });
-      });
+        saveQuestionAnswer(question.id, {
+          choice: isMultiSelectQuestion(question.id) ? selected.join("\n") : selected[0] || "",
+          text: text ? text.value.trim() : ""
+        });
+      }
     } else if (step.id === "participation") {
       catalog.consent.forEach((consent) => {
         const input = document.querySelector(`[name="${consent.id}"]`);
@@ -1106,16 +1316,22 @@ async function initSurvey() {
     } else if (step.id === "details") {
       if (!state.industry) return "Choose an industry to continue.";
       if (!state.about.roles.length) return "Select at least one role that is part of your perspective.";
+      if (state.about.roles.some((roleName) => roleName.includes("(specify)") && !state.about.roleSpecifications[roleName])) return "Specify the community stakeholder role you selected.";
       if (!state.about.occupation) return "Choose an occupation or use a write-in occupation.";
       if (!state.about.city) return "Choose a location from the worldwide search results so we can place your perspective in context.";
     } else if (step.id === "questions") {
-      if (!Object.values(completedAnswers()).length) return "Complete at least one prompt with a starting point and a voice note or written response.";
+      const incompleteQuestion = state.industry.questions.find((question) => !questionHasResponse(question));
+      if (incompleteQuestion) {
+        const questionNumber = state.industry.questions.indexOf(incompleteQuestion) + 1;
+        return `Complete question ${questionNumber}: ${questionValidationMessage(incompleteQuestion)}`;
+      }
     }
     return "";
   }
 
   async function handleNext() {
     syncCurrentStep();
+    state.navigationError = false;
     state.errors = validateCurrentStep();
     if (state.errors) {
       render();
@@ -1126,6 +1342,7 @@ async function initSurvey() {
       if (state.step < getSteps().length - 1) {
         if (state.recorder) stopRecording();
         state.completedThrough = Math.max(state.completedThrough, state.step);
+        state.visitedThrough = Math.max(state.visitedThrough, state.step);
         state.step += 1;
         queueDraftSave();
         render();
@@ -1152,6 +1369,7 @@ async function initSurvey() {
       });
       state.saved = true;
       state.completedThrough = getSteps().length - 1;
+      state.visitedThrough = getSteps().length - 1;
       sessionStatus.textContent = "Your response has been submitted.";
       render();
     } catch (error) {
@@ -1163,31 +1381,28 @@ async function initSurvey() {
   function renderSuccess() {
     content.replaceChildren();
     const wrapper = el("div", "completion-card");
-    wrapper.append(el("span", "section-kicker", "Thank you for adding your voice"));
-    wrapper.append(el("h2", null, "The table is a little wider now."));
-    wrapper.append(el("p", "section-lede", "Your perspective is ready for the Voices Wall. It may take a moment to appear as the wall refreshes."));
+    wrapper.append(el("h2", null, "Thank you for sharing your voice."));
+    wrapper.append(el("p", "section-lede", "Your perspective has been received."));
     const card = el("div", "form-card");
     const actions = el("div", "voice-actions");
     const edit = el("button", "btn ghost", "Edit your response");
     edit.type = "button";
     edit.addEventListener("click", () => {
       state.saved = false;
+      state.editing = true;
       state.step = 0;
       state.errors = "";
       queueDraftSave();
       render();
     });
-    const wall = el("a", "btn primary", "Visit the Voices Wall");
-    wall.href = "wall.html";
-    const home = el("a", "btn ghost", "Return home");
+    const home = el("a", "btn primary", "Return home");
     home.href = "index.html";
-    actions.append(edit, wall, home);
+    actions.append(edit, home);
     card.append(actions);
     wrapper.append(card);
     content.append(wrapper);
     progressBar.style.width = "100%";
     progressMeter.setAttribute("aria-valuenow", String(getSteps().length));
-    stepCount.textContent = "Response saved";
   }
 
   function createLiveWaveform(stream, questionId) {

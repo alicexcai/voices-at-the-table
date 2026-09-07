@@ -16,9 +16,8 @@
       <a class="mark" href="index.html">Voices at the Table</a>
       <nav class="site-nav" aria-label="Main navigation">
         <a href="survey.html" aria-current="page">Share your voice</a>
-        <a href="wall.html">Voices wall</a>
       </nav>
-      <span class="right">Phase I / Personal perspectives</span>
+      <span class="right">An MIT Initiative</span>
     </div>
   </div>
 
@@ -27,32 +26,29 @@
     <span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span>
   </div></div>
 
+  <div class="app-bar" id="surveyAppBar" hidden>
+    <div class="progress-meter" role="progressbar" aria-label="Survey completion" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0">
+      <span class="progress-meter-fill" id="surveyProgressBar"></span>
+    </div>
+    <div class="app-bar-row">
+      <div class="progress-list" id="surveyProgress" aria-label="Survey steps"></div>
+      <span class="survey-time-label" id="surveyTimeRemaining">6 minutes remaining</span>
+      <span id="surveySessionStatus" class="sr-only" aria-live="polite"></span>
+    </div>
+  </div>
+
   <main class="page-main">
     <div class="app-wrap">
-      <div class="app-bar" id="surveyAppBar" hidden>
-        <div class="survey-step-summary">
-          <span class="step-count" id="surveyStepCount">Step 1 of 4</span>
-          <span class="save-note" id="surveySessionStatus">Your response is saved automatically.</span>
-        </div>
-        <div class="survey-time-progress" aria-label="Survey progress">
-          <span class="survey-time-label">About 6 minutes</span>
-          <div class="progress-meter" role="progressbar" aria-label="Survey completion" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0">
-            <span class="progress-meter-fill" id="surveyProgressBar"></span>
-          </div>
-        </div>
-      </div>
       <section class="survey-layout" id="surveyWorkspace" hidden>
-        <aside class="survey-rail" aria-label="Survey progress">
-          <h2 id="surveyIndustryName">Your survey</h2>
-          <p id="surveyIndustryDescriptor">Start with a little context, then share your perspective.</p>
-          <div class="progress-list" id="surveyProgress"></div>
-        </aside>
         <div class="survey-content" id="surveyContent" aria-live="polite"></div>
       </section>
     </div>
   </main>
 
-  <footer><span class="mark">Voices at the Table</span> · MIT IWER initiative</footer>
+  <div class="ticker foot" aria-hidden="true"><div class="track">
+    <span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span>
+    <span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span><span>We should get a say.</span><span class="sep">✦</span>
+  </div></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -2,37 +2,104 @@
   "version": "1.3",
   "occupationOptions": [
     "Teacher / educator",
+    "School administrator / principal",
+    "Professor / lecturer",
+    "Teaching assistant",
+    "School counselor",
+    "Special education specialist",
+    "Librarian",
+    "Tutor",
+    "Instructional designer",
+    "Education researcher",
+    "School support staff",
     "Student",
+    "Parent / family caregiver",
+    "Physician",
+    "Nurse",
+    "Nurse practitioner",
+    "Physician assistant",
+    "Therapist",
+    "Psychologist",
+    "Psychiatrist",
+    "Social worker",
+    "Pharmacist",
+    "Dentist",
+    "Dental hygienist",
+    "Medical assistant",
+    "Laboratory technician",
+    "Radiologic technologist",
+    "Healthcare administrator",
+    "Care coordinator",
+    "Public health professional",
+    "Patient",
+    "Family caregiver",
     "Researcher / scientist",
-    "Clinician / healthcare worker",
-    "Artist / designer / creative practitioner",
+    "Laboratory researcher",
+    "Field researcher",
+    "Data scientist",
+    "Statistician",
+    "Engineer",
+    "Software developer",
+    "Research administrator",
+    "Professor / academic",
+    "Graduate student",
+    "Research participant",
+    "Science communicator",
+    "Science policy analyst",
+    "Artist",
+    "Designer",
+    "Illustrator",
+    "Photographer",
+    "Filmmaker",
+    "Video editor",
+    "Animator",
+    "Writer",
+    "Editor",
+    "Journalist",
+    "Musician",
+    "Composer",
+    "Performer / actor",
+    "Producer",
+    "Creative director",
+    "Art director",
+    "Curator",
+    "Arts administrator",
+    "Critic",
+    "Enthusiast / audience member",
+    "Freelancer",
     "Technologist / engineer",
+    "AI / machine learning specialist",
     "Manager / administrator",
+    "Executive / business owner",
     "Public servant",
+    "Policy professional",
+    "Lawyer",
+    "Community organizer",
+    "Advocate / organizer",
+    "Consultant",
     "Service worker",
-    "Caregiver",
-    "Advocate / organizer"
+    "Retail worker",
+    "Hospitality worker",
+    "Transportation worker",
+    "Manufacturing worker",
+    "Construction worker",
+    "Agricultural worker",
+    "Caregiver"
   ],
   "questionOptions": {
     "relationship": [
-      "I use it often",
-      "I experiment with it occasionally",
-      "I encounter it through others",
-      "I have not used it yet",
-      "I am unsure"
+      "I do not use AI",
+      "I rarely use AI",
+      "I use AI a lot",
+      "I am pressured to use AI more"
     ],
     "hopeAndConcern": [
-      "I feel mostly hopeful",
-      "I feel both hopeful and concerned",
-      "I feel mostly concerned",
-      "I am still figuring it out"
+      "I feel mostly hopeful about AI",
+      "I feel most concerned about AI",
+      "I feel both hopeful and concerned about AI",
+      "I am still figuring out how I feel about AI"
     ],
-    "perspectives": [
-      "People want different things from it",
-      "People disagree about what should be protected",
-      "People have different levels of power or say",
-      "I am not sure yet"
-    ]
+    "perspectives": []
   },
   "consent": [
     {
@@ -57,7 +124,7 @@
       "label": "Education",
       "status": "open",
       "descriptor": "Classrooms, campuses, and the people who make learning possible.",
-      "roles": ["Worker / educator", "Manager", "Technologist", "Student", "Parent or caregiver", "Other community stakeholder"],
+      "roles": ["Teacher", "Administrator", "Technologist", "Student", "Parent"],
       "stakeholderGroups": ["workers and educators", "managers and technologists", "students, families, and communities"],
       "questions": [
         {
@@ -65,12 +132,12 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Education? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Education? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -78,8 +145,16 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and educators, managers and technologists, and students, families, and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect teachers in Education",
+            "I think we need policies to protect students in Education",
+            "I think we need policies to promote innovation in Education",
+            "I think we need policies to regulate AI deployment in Education",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Education",
+            "I think we need policies to share or redistribute AI profits"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -90,7 +165,7 @@
       "label": "Healthcare",
       "status": "open",
       "descriptor": "Care teams, patients, families, and the systems around them.",
-      "roles": ["Worker / clinician", "Manager", "Technologist", "Patient", "Family caregiver", "Other community stakeholder"],
+      "roles": ["Frontline worker", "Manager", "Technologist", "Patient", "Other community stakeholder (specify)"],
       "stakeholderGroups": ["workers and care teams", "managers and technologists", "patients, families, and communities"],
       "questions": [
         {
@@ -98,12 +173,12 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Healthcare? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Healthcare? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -111,8 +186,16 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and care teams, managers and technologists, and patients, families, and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect healthcare workers in Healthcare",
+            "I think we need policies to protect patients in Healthcare",
+            "I think we need policies to promote innovation in Healthcare",
+            "I think we need policies to regulate AI deployment in Healthcare",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Healthcare",
+            "I think we need policies to share or redistribute AI profits"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -123,7 +206,7 @@
       "label": "Science",
       "status": "open",
       "descriptor": "Labs, fieldwork, discovery, and the public trust in knowledge.",
-      "roles": ["Worker / researcher", "Manager", "Technologist", "Student", "Research participant", "Other community stakeholder"],
+      "roles": ["Research Worker", "Research Manager or Professor", "Administrator", "Technologist", "Other community stakeholder (specify)"],
       "stakeholderGroups": ["workers and researchers", "managers and technologists", "students, participants, and communities"],
       "questions": [
         {
@@ -131,12 +214,12 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Science? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Science? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -144,8 +227,15 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and researchers, managers and technologists, and students, participants, and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect researchers in Science",
+            "I think we need policies to promote innovation in Science",
+            "I think we need policies to regulate AI deployment in Science",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Science",
+            "I think we need policies to share or redistribute AI profits"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -156,7 +246,7 @@
       "label": "Creative Work",
       "status": "open",
       "descriptor": "The people, practices, and livelihoods behind culture and expression.",
-      "roles": ["Worker / creative practitioner", "Manager", "Technologist", "Student", "Audience member", "Other community stakeholder"],
+      "roles": ["Artist", "Manager", "Technologist", "Enthusiast / critic", "Other community stakeholder (specify)"],
       "stakeholderGroups": ["workers and creative practitioners", "managers and technologists", "audiences and communities"],
       "questions": [
         {
@@ -164,12 +254,12 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Creative Work? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Creative Work? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -177,8 +267,16 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and creative practitioners, managers and technologists, and audiences and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
+          "options": [
+            "I think we need policies to protect artists in Creative Work",
+            "I think we need policies to protect consumers in Creative Work",
+            "I think we need policies to promote innovation in Creative Work",
+            "I think we need policies to regulate AI deployment in Creative Work",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Creative Work",
+            "I think we need policies to share or redistribute AI profits"
+          ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
         }
@@ -197,7 +295,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
@@ -230,7 +328,7 @@
           "title": "AI in your world",
           "prompt": "How is generative AI showing up in your work or daily life? What is your current relationship with it?",
           "type": "choice",
-          "options": ["I use it often", "I experiment with it occasionally", "I encounter it through others", "I have not used it yet", "I am unsure"]
+          "options": ["I do not use AI", "I rarely use AI", "I use AI a lot", "I am pressured to use AI more"]
         },
         {
           "id": "hopeAndConcern",
