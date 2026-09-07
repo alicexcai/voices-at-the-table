@@ -1005,7 +1005,8 @@ async function initSurvey() {
           .slice(0, index)
           .find((item) => !questionHasResponse(item));
         if (incompleteQuestion) {
-          state.errors = `Complete question ${state.industry.questions.indexOf(incompleteQuestion) + 1} before moving on.`;
+          const questionNumber = state.industry.questions.indexOf(incompleteQuestion) + 1;
+          state.errors = `Complete question ${questionNumber}: ${questionValidationMessage(incompleteQuestion)}`;
           state.navigationError = true;
           render();
           return;
@@ -1137,8 +1138,11 @@ async function initSurvey() {
       return;
     }
     const currentQuestion = state.industry?.questions[state.questionIndex];
-    if (!currentQuestion || !questionHasResponse(currentQuestion)) {
-      state.errors = "Complete this question with a selection and a voice note or written response.";
+    const questionError = currentQuestion
+      ? questionValidationMessage(currentQuestion)
+      : "Choose an industry before answering questions.";
+    if (questionError) {
+      state.errors = questionError;
       state.navigationError = false;
       render();
       return;
@@ -1164,9 +1168,16 @@ async function initSurvey() {
     queueDraftSave();
   }
 
+  function questionValidationMessage(question) {
+    const answer = state.answers[question.id] || emptyAnswer();
+    const missing = [];
+    if (!answer.choice.trim()) missing.push("Select at least one statement.");
+    if (!answer.text.trim() && !answer.audioId) missing.push("Add a voice note or written response.");
+    return missing.join(" ");
+  }
+
   function questionHasResponse(question) {
-    const answer = state.answers[question.id];
-    return Boolean(answer?.choice?.trim() && (answer.text?.trim() || answer.audioId));
+    return !questionValidationMessage(question);
   }
 
   function completedAnswers() {
@@ -1309,8 +1320,10 @@ async function initSurvey() {
       if (!state.about.occupation) return "Choose an occupation or use a write-in occupation.";
       if (!state.about.city) return "Choose a location from the worldwide search results so we can place your perspective in context.";
     } else if (step.id === "questions") {
-      if (state.industry.questions.some((question) => !questionHasResponse(question))) {
-        return "Complete all three questions with a selection and a voice note or written response.";
+      const incompleteQuestion = state.industry.questions.find((question) => !questionHasResponse(question));
+      if (incompleteQuestion) {
+        const questionNumber = state.industry.questions.indexOf(incompleteQuestion) + 1;
+        return `Complete question ${questionNumber}: ${questionValidationMessage(incompleteQuestion)}`;
       }
     }
     return "";
