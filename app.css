@@ -132,6 +132,7 @@ body[data-page="survey"] > footer { padding: 12px 24px 18px; }
 .question-tab:hover, .question-tab:focus-visible, .question-tab.is-active { background: var(--yellow); }
 .question-tab.is-active { font-weight: 600; }
 .question-prompt-featured { max-width: 58ch; margin-top: 10px; color: var(--ink); font-family: "Vidaloka", Georgia, serif; font-size: clamp(1.45rem, 2.6vw, 2.2rem); font-style: normal; line-height: 1.2; }
+.prompt-highlight { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--yellow); text-decoration-thickness: .22em; text-underline-offset: -.12em; text-decoration-skip-ink: none; }
 .question-response-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 24px; }
 .question-response-row .voice-panel { margin-top: 0; }
 .question-card-active .question-voice-panel { padding: 0; border: 0; background: transparent; box-shadow: none; }

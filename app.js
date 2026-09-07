@@ -20,6 +20,27 @@ const el = (tag, className, text) => {
 
 const lucideIcons = { mic: Mic, pause: Pause, pencil: Pencil, play: Play, square: Square };
 
+const promptHighlights = {
+  relationship: ["work", "daily life", "current relationship"],
+  hopeAndConcern: ["hope", "challenges"],
+  perspectives: ["policies", "better for people"]
+};
+
+function appendHighlightedText(parent, text, phrases = []) {
+  const matches = phrases
+    .map((phrase) => ({ phrase, start: text.indexOf(phrase) }))
+    .filter(({ start }) => start >= 0)
+    .sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  matches.forEach(({ phrase, start }) => {
+    if (start < cursor) return;
+    if (start > cursor) parent.append(document.createTextNode(text.slice(cursor, start)));
+    parent.append(el("span", "prompt-highlight", text.slice(start, start + phrase.length)));
+    cursor = start + phrase.length;
+  });
+  if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
+}
+
 function createIcon(name) {
   const icon = createElement(lucideIcons[name]);
   icon.setAttribute("aria-hidden", "true");
@@ -985,7 +1006,9 @@ async function initSurvey() {
     });
     header.append(eyebrow, tabs);
     card.append(header);
-    card.append(el("p", "question-prompt question-prompt-featured", question.prompt));
+    const prompt = el("p", "question-prompt question-prompt-featured");
+    appendHighlightedText(prompt, question.prompt, promptHighlights[question.id]);
+    card.append(prompt);
 
     const isRecording = Boolean(state.recorder && state.recordingQuestionId === question.id);
     const voicePanel = el("div", "voice-panel question-voice-panel");

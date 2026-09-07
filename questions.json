@@ -143,7 +143,7 @@
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Education? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Education? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -151,7 +151,7 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and educators, managers and technologists, and students, families, and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
@@ -176,7 +176,7 @@
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Healthcare? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Healthcare? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -184,7 +184,7 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and care teams, managers and technologists, and patients, families, and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
@@ -209,7 +209,7 @@
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Science? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Science? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -217,7 +217,7 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and researchers, managers and technologists, and students, participants, and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
@@ -242,7 +242,7 @@
         {
           "id": "hopeAndConcern",
           "title": "Hope and concern",
-          "prompt": "Where do you find hope and meaning in how AI might empower people and improve Creative Work? Where do you have concerns or see challenges?",
+          "prompt": "Where do you find hope in how AI might improve Creative Work? Where do you have concerns or see challenges?",
           "type": "textarea",
           "placeholder": "There is room for both hope and worry here.",
           "required": true
@@ -250,7 +250,7 @@
         {
           "id": "perspectives",
           "title": "Different perspectives",
-          "prompt": "What motivations might workers and creative practitioners, managers and technologists, and audiences and communities have? What might they see differently?",
+          "prompt": "What are the top 3 policies you support that you think would make the AI Transition better for people?",
           "type": "textarea",
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
