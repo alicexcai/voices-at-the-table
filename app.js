@@ -966,7 +966,7 @@ async function initSurvey() {
     const answer = state.answers[question.id] || emptyAnswer();
     const card = el("article", "question-card question-card-active");
     const header = el("div", "question-card-header");
-    const eyebrow = el("div", "question-eyebrow", `${String(questionIndex + 1).padStart(2, "0")} | ${question.title}`);
+    const eyebrow = el("div", "question-eyebrow", `${String(questionIndex + 1).padStart(2, "0")}. ${question.title}`);
     const tabs = el("div", "question-tabs", null);
     questions.forEach((item, index) => {
       const tab = el("button", `question-tab ${index === questionIndex ? "is-active" : ""}`, String(index + 1).padStart(2, "0"));
@@ -1003,7 +1003,7 @@ async function initSurvey() {
       startRecording(question.id);
     });
     actions.append(recordButton);
-    const textToggle = el("button", "question-text-toggle", "Write response");
+    const textToggle = el("button", "question-text-toggle", "Write response instead");
     textToggle.type = "button";
     textToggle.setAttribute("aria-expanded", String(Boolean(state.textOpenQuestions[question.id])));
     textToggle.addEventListener("click", () => {
@@ -1022,7 +1022,7 @@ async function initSurvey() {
       if (answer.audioUrl && !isRecording) drawDecodedWaveform(waveform, answer.audioUrl);
     } else {
       waveform = el("div", "question-waveform-placeholder");
-      [24, 38, 28, 58, 34, 48, 26, 64, 36, 52, 30, 44, 22, 40, 28, 56].forEach((height) => {
+      [28, 46, 34, 68, 40, 56, 30, 76, 44, 62, 36, 52, 26, 48, 34, 66, 42, 58, 30, 72, 38, 54, 28, 64].forEach((height) => {
         const bar = el("span");
         bar.style.height = `${height}px`;
         waveform.append(bar);
