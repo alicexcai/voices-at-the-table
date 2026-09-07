@@ -10,7 +10,7 @@ import {
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
-import { pool } from "./db.js";
+import { initializeDatabase, pool } from "./db.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url)).replace(/[\\/]+$/, "");
 const port = Number(process.env.PORT || 3000);
@@ -511,6 +511,13 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "0.0.0.0", () => {
-  console.log(`Voices at the Table server listening on ${port}`);
-});
+initializeDatabase()
+  .then(() => {
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`Voices at the Table server listening on ${port}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Database initialization failed.", error);
+    process.exitCode = 1;
+  });
