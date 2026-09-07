@@ -1001,6 +1001,15 @@ async function initSurvey() {
       tab.addEventListener("click", () => {
         syncCurrentStep();
         if (state.recorder) stopRecording();
+        const incompleteQuestion = state.industry?.questions
+          .slice(0, index)
+          .find((item) => !questionHasResponse(item));
+        if (incompleteQuestion) {
+          state.errors = `Complete question ${state.industry.questions.indexOf(incompleteQuestion) + 1} before moving on.`;
+          state.navigationError = true;
+          render();
+          return;
+        }
         state.questionIndex = index;
         state.errors = "";
         state.navigationError = false;
