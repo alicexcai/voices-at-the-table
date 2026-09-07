@@ -952,7 +952,6 @@ async function initSurvey() {
 
   function renderQuestions() {
     content.append(el("h2", null, "Questions"));
-    content.append(el("p", "question-step-note", "Answer the following 3 questions, either as a voice note or written response."));
     if (!state.industry) {
       content.append(el("p", "field-note", "Choose an industry in Context to see the prompts."));
       appendFormActions(content);
@@ -1011,7 +1010,6 @@ async function initSurvey() {
       state.errors = "";
       render();
     });
-    actions.append(textToggle);
     let waveform;
     if (isRecording || answer.audioId) {
       waveform = document.createElement("canvas");
@@ -1034,7 +1032,7 @@ async function initSurvey() {
       actions.append(playButton);
     }
     audioRow.append(actions, waveform);
-    voicePanel.append(audioRow);
+    voicePanel.append(audioRow, textToggle);
     responseRow.append(voicePanel);
     card.append(responseRow);
 

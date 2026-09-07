@@ -134,13 +134,13 @@ body[data-page="survey"] > footer { padding: 12px 24px 18px; }
 .question-response-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 24px; }
 .question-response-row .voice-panel { margin-top: 0; }
 .question-card-active .question-voice-panel { padding: 0; border: 0; background: transparent; box-shadow: none; }
-.question-voice-panel .voice-audio-row { margin-top: 0; }
+.question-voice-panel .voice-audio-row { width: 100%; margin-top: 0; }
 .question-voice-panel .voice-actions { align-items: center; flex-direction: column; flex-wrap: nowrap; gap: 10px; margin-top: 0; }
 .question-voice-panel .voice-waveform { height: 100px; }
-.question-record-button { width: 56px; min-width: 56px; height: 56px; padding: 13px; }
-.question-record-button svg { width: 28px; height: 28px; }
-.question-text-toggle { border: 0; background: transparent; padding: 0; color: var(--ink); cursor: pointer; font: inherit; font-size: 12px; line-height: 1.2; text-decoration: underline; }
-.question-waveform-placeholder { display: flex; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; min-width: 0; min-height: 100px; padding: 0; }
+.question-record-button { width: 68px; min-width: 68px; height: 68px; padding: 15px; }
+.question-record-button svg { width: 34px; height: 34px; }
+.question-text-toggle { display: block; border: 0; background: transparent; margin-top: 12px; padding: 0; color: var(--ink); cursor: pointer; font: inherit; font-size: 12px; line-height: 1.2; text-align: left; text-decoration: underline; }
+.question-waveform-placeholder { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; min-width: 0; min-height: 100px; padding: 0; }
 .question-waveform-placeholder span { display: block; width: 5px; min-height: 8px; border-radius: 999px; background: var(--ink); opacity: .7; }
 .question-card-active .question-text-response { margin-top: 18px; padding-top: 0; border-top: 0; }
 .question-card-active .question-choice { margin-top: 24px; }
