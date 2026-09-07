@@ -952,7 +952,7 @@ async function initSurvey() {
 
   function renderQuestions() {
     content.append(el("h2", null, "Questions"));
-    content.append(el("p", "question-step-note", "There are 3 questions to answer as audio or written."));
+    content.append(el("p", "question-step-note", "Answer the following 3 questions, either as a voice note or written response."));
     if (!state.industry) {
       content.append(el("p", "field-note", "Choose an industry in Context to see the prompts."));
       appendFormActions(content);
@@ -966,7 +966,7 @@ async function initSurvey() {
     const answer = state.answers[question.id] || emptyAnswer();
     const card = el("article", "question-card question-card-active");
     const header = el("div", "question-card-header");
-    const eyebrow = el("div", "question-eyebrow", `${String(questionIndex + 1).padStart(2, "0")} ${question.title}`);
+    const eyebrow = el("div", "question-eyebrow", `${String(questionIndex + 1).padStart(2, "0")} | ${question.title}`);
     const tabs = el("div", "question-tabs", null);
     questions.forEach((item, index) => {
       const tab = el("button", `question-tab ${index === questionIndex ? "is-active" : ""}`, String(index + 1).padStart(2, "0"));
@@ -993,7 +993,7 @@ async function initSurvey() {
     const responseRow = el("div", "question-response-row");
     const audioRow = el("div", "voice-audio-row");
     const actions = el("div", "voice-actions");
-    const recordButton = iconButton("btn primary small", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
+    const recordButton = iconButton("btn primary small question-record-button", isRecording ? "square" : "mic", isRecording ? "Stop recording" : "Record a voice note", isRecording);
     recordButton.addEventListener("click", () => {
       syncCurrentStep();
       if (state.recorder) {
@@ -1003,6 +1003,15 @@ async function initSurvey() {
       startRecording(question.id);
     });
     actions.append(recordButton);
+    const textToggle = el("button", "question-text-toggle", "Write response");
+    textToggle.type = "button";
+    textToggle.setAttribute("aria-expanded", String(Boolean(state.textOpenQuestions[question.id])));
+    textToggle.addEventListener("click", () => {
+      state.textOpenQuestions[question.id] = !state.textOpenQuestions[question.id];
+      state.errors = "";
+      render();
+    });
+    actions.append(textToggle);
     let waveform;
     if (isRecording || answer.audioId) {
       waveform = document.createElement("canvas");
@@ -1013,7 +1022,7 @@ async function initSurvey() {
       if (answer.audioUrl && !isRecording) drawDecodedWaveform(waveform, answer.audioUrl);
     } else {
       waveform = el("div", "question-waveform-placeholder");
-      [18, 30, 22, 42, 26, 36, 20, 48, 28, 38, 24, 34, 18, 30, 22, 40].forEach((height) => {
+      [24, 38, 28, 58, 34, 48, 26, 64, 36, 52, 30, 44, 22, 40, 28, 56].forEach((height) => {
         const bar = el("span");
         bar.style.height = `${height}px`;
         waveform.append(bar);
@@ -1026,13 +1035,7 @@ async function initSurvey() {
     }
     audioRow.append(actions, waveform);
     voicePanel.append(audioRow);
-    const textToggle = iconButton("btn ghost small", "pencil", "Enter a written response", Boolean(state.textOpenQuestions[question.id]));
-    textToggle.addEventListener("click", () => {
-      state.textOpenQuestions[question.id] = !state.textOpenQuestions[question.id];
-      state.errors = "";
-      render();
-    });
-    responseRow.append(voicePanel, textToggle);
+    responseRow.append(voicePanel);
     card.append(responseRow);
 
     if (state.textOpenQuestions[question.id] || answer.text) {
