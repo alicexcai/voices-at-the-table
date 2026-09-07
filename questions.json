@@ -150,7 +150,10 @@
           "options": [
             "I think we need policies to protect teachers in Education",
             "I think we need policies to protect students in Education",
-            "I think we need policies to promote innovation in Education"
+            "I think we need policies to promote innovation in Education",
+            "I think we need policies to regulate AI deployment in Education",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Education",
+            "I think we need policies to share or redistribute AI profits"
           ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
@@ -188,7 +191,10 @@
           "options": [
             "I think we need policies to protect healthcare workers in Healthcare",
             "I think we need policies to protect patients in Healthcare",
-            "I think we need policies to promote innovation in Healthcare"
+            "I think we need policies to promote innovation in Healthcare",
+            "I think we need policies to regulate AI deployment in Healthcare",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Healthcare",
+            "I think we need policies to share or redistribute AI profits"
           ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
@@ -225,7 +231,10 @@
           "type": "textarea",
           "options": [
             "I think we need policies to protect researchers in Science",
-            "I think we need policies to promote innovation in Science"
+            "I think we need policies to promote innovation in Science",
+            "I think we need policies to regulate AI deployment in Science",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Science",
+            "I think we need policies to share or redistribute AI profits"
           ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
@@ -263,7 +272,10 @@
           "options": [
             "I think we need policies to protect artists in Creative Work",
             "I think we need policies to protect consumers in Creative Work",
-            "I think we need policies to promote innovation in Creative Work"
+            "I think we need policies to promote innovation in Creative Work",
+            "I think we need policies to regulate AI deployment in Creative Work",
+            "I think we need policies to give workers and consumers a say in how AI is deployed in Creative Work",
+            "I think we need policies to share or redistribute AI profits"
           ],
           "placeholder": "What would each group want protected, changed, or made possible?",
           "required": true
